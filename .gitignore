@@ -1,5 +1,6 @@
 node_modules/
 dist/
+!packages/shared/dist/
 .expo/
 .expo-shared/
 *.jks
