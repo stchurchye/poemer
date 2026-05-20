@@ -1,0 +1,86 @@
+{
+  "expo": {
+    "name": "诗人",
+    "slug": "shiren",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#faf6f0"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "需要听您说话，用来转成文字",
+        "NSMicrophoneUsageDescription": "需要录音，用来听您说话",
+        "NSPhotoLibraryAddUsageDescription": "需要把章节长图保存到相册，方便您分享到微信或小红书",
+        "NSPhotoLibraryUsageDescription": "需要访问相册以保存章节长图、选择照片识图录入文字",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      },
+      "bundleIdentifier": "com.anonymous.shiren"
+    },
+    "android": {
+      "package": "com.stchurch.shiren",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#faf6f0"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
+      ],
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "updates": {
+      "url": "https://u.expo.dev/740c61a8-05ca-4db8-8ac3-c22d21bd3ce2"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-updates",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "需要访问相册以选择照片，识别其中的文字录入章节"
+        }
+      ],
+      "expo-speech-recognition",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "需要录音，用来听您说话"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "需要把章节长图保存到相册，方便您分享到微信或小红书",
+          "savePhotosPermission": "需要把章节长图保存到相册，方便您分享到微信或小红书"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "740c61a8-05ca-4db8-8ac3-c22d21bd3ce2"
+      }
+    },
+    "owner": "stchurch"
+  }
+}

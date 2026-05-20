@@ -1,0 +1,23 @@
+# 诗人 API — 专用端口 3921（避免与 3000/3001/3100 等冲突）
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: shiren-api
+    ports:
+      - "3921:3921"
+    environment:
+      PORT: "3921"
+      NODE_ENV: production
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    volumes:
+      # 文稿 / 版本 / 问问题记录落盘到宿主机，重建容器不丢数据
+      - ./apps/api/data:/app/apps/api/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3921/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

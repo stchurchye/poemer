@@ -1,0 +1,22 @@
+{
+  "name": "cursor-shiren",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "PORT=3921 npm run dev -w @shiren/api",
+    "dev:mobile": "npm run start --prefix apps/mobile -- --localhost",
+    "ios:ipad": "npm run ios:ipad -w @shiren/mobile",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f api",
+    "build": "npm run build -w @shiren/shared && npm run build -w @shiren/api",
+    "postinstall": "npm run build -w @shiren/shared",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
