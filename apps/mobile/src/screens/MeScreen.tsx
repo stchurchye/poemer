@@ -26,6 +26,7 @@ import { colors, typography } from '../theme/colors';
 import { useFontPreferences } from '../theme/FontPreferencesContext';
 import type { FontSizePreset } from '../theme/fontPresets';
 import { useLayout } from '../theme/layout';
+import { AppVersionFooter } from '../components/AppVersionFooter';
 import { LocalDataCard } from '../components/LocalDataCard';
 import { zh } from '../locales/zh-CN';
 
@@ -223,6 +224,8 @@ export function MeScreen() {
             );
           })}
         </View>
+
+        <AppVersionFooter />
       </TabletFrame>
     </ScrollView>
   );
