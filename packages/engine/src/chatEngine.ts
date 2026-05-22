@@ -1,6 +1,7 @@
 import type { ChatIntentAnalyzeResult, ChatMessage, ChatSession } from '@shiren/shared';
 import {
   chatIntentPromptForDialect,
+  chatPersonaForDialect,
   chatSessionTitlePromptForDialect,
   formatChatIntentUserPayload,
   isAssistantGuideKey,
@@ -124,8 +125,7 @@ export async function generateChatReply(
     messages: [
       {
         role: 'system',
-        content:
-          '你是「写作小助手」，陪长辈聊天解惑。语气温柔、有耐心。全部用中文回复。',
+        content: chatPersonaForDialect(input.dialect),
       },
       ...history,
       { role: 'user', content: input.userText },

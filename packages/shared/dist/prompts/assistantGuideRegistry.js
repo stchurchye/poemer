@@ -76,4 +76,44 @@ guide 时：只输出 JSON，唔好喺 JSON 前写长文教佢点操作；displa
 export function assistantGuideRulesForDialect(dialect) {
     return dialect === 'cantonese' ? GUIDE_RULES_CANTONESE : GUIDE_RULES_MANDARIN;
 }
+const CHAT_GUIDE_RULES_MANDARIN = `
+【问问题 · 产品操作引导（mode = guide）】
+仅当用户明显是要**使用 App 设置或切换话题**，而不是在请教生活/常识问题时，判为 guide 并填 guide 字段。
+
+| guide 值 | 用户可能的意思 |
+|----------|----------------|
+| settings_font | 改字体、字大点/小点、字号、看不清字 |
+| settings_voice | 换朗读声音、人声不好听 |
+| settings_dialect | 换普通话、换粤语、换语言 |
+| chat_switch_topic | 换话题、聊别的、新话题 |
+
+【问问题 · 改稿请求（不要 guide，不要长答）】
+若用户要润色、续写、扩写、改文章、改正文：ready 为 false，sendContent 为空；displayText 只写一句「改文章请去写作页，用小助手改字」，不要追问改稿细节，不要展开教学。
+
+guide 时：只输出 JSON，displayText 留空或不超过一句；界面会弹窗带她去对应功能。
+
+示例：
+{"sendContent":"","ready":false,"guide":"settings_font","displayText":""}`;
+const CHAT_GUIDE_RULES_CANTONESE = `
+【问问题 · 产品操作引导（mode = guide）】
+仅当用户明显系要**用 App 设置或者换话题**，而唔系问生活/常识时，判 guide。
+
+| guide 值 | 用户可能的意思 |
+|----------|----------------|
+| settings_font | 改字体、字大啲/细啲、字号、睇唔清 |
+| settings_voice | 换朗读声、人声 |
+| settings_dialect | 转粤语、转普通话、换语言 |
+| chat_switch_topic | 换话题、倾第二样 |
+
+【问问题 · 改稿请求】
+要润色、续写、改文章正文：ready false，sendContent 空；displayText 一句「改文章请去写作页用小助手」，唔好追问细节。
+
+guide 时：只输出 JSON，displayText 留空或极短。
+
+示例：
+{"sendContent":"","ready":false,"guide":"settings_font","displayText":""}`;
+/** 问问题意图整理专用：不含 writing_* 引导，避免把问答拉向改稿 */
+export function assistantChatGuideRulesForDialect(dialect) {
+    return dialect === 'cantonese' ? CHAT_GUIDE_RULES_CANTONESE : CHAT_GUIDE_RULES_MANDARIN;
+}
 //# sourceMappingURL=assistantGuideRegistry.js.map

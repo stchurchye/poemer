@@ -203,7 +203,7 @@ export const zh = {
   chat: {
     title: '问小助手',
     sideTitle: '问问题',
-    sideHint: '有什么想聊的都可以问。写作改稿请去「写作」里，小助手会在那边帮您改文章。',
+    sideHint: '生活、常识、使用上的疑问都可以问。若要改文章正文，请去「写作」页用小助手。',
     openTools: '切换话题',
     closeTools: '收起',
     placeholder: '说说您想问的…',

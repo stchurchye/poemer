@@ -4,4 +4,6 @@ export declare const ASSISTANT_GUIDE_KEYS: readonly ["settings_font", "settings_
 export type AssistantGuideKey = (typeof ASSISTANT_GUIDE_KEYS)[number];
 export declare function isAssistantGuideKey(value: unknown): value is AssistantGuideKey;
 export declare function assistantGuideRulesForDialect(dialect?: ReplyDialect | null): string;
+/** 问问题意图整理专用：不含 writing_* 引导，避免把问答拉向改稿 */
+export declare function assistantChatGuideRulesForDialect(dialect?: ReplyDialect | null): string;
 //# sourceMappingURL=assistantGuideRegistry.d.ts.map
