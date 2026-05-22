@@ -1,8 +1,8 @@
 /** 圆角、触控等布局令牌（字号见 colors.typography，响应式见 useLayout） */
 export const radius = {
-  sm: 12,
-  md: 16,
-  pill: 20,
+  sm: 10,
+  md: 14,
+  pill: 22,
 } as const;
 
 export const touch = {
@@ -11,7 +11,7 @@ export const touch = {
 } as const;
 
 export const shadow = {
-  color: '#3d3229',
+  color: '#0a0a14',
 } as const;
 
 export { colors, typography } from './colors';

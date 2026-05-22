@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
 import { colors, typography } from '../theme/colors';
-import { touch } from '../theme/tokens';
+import { radius, touch } from '../theme/tokens';
 
 interface Props {
   title: string;
@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
   base: {
     paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 12,
+    borderRadius: radius.sm,
     alignItems: 'center',
     minHeight: touch.comfort,
     justifyContent: 'center',
