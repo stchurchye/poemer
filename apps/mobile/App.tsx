@@ -7,8 +7,11 @@ import { FontPreferencesProvider } from './src/theme/FontPreferencesContext';
 import { ApiConnectivityProvider } from './src/context/ApiConnectivityContext';
 import { LocalStoreProvider } from './src/context/LocalStoreContext';
 import { RootTabs } from './src/navigation/RootTabs';
+import { useOtaUpdateOnLaunch } from './src/hooks/useOtaUpdateOnLaunch';
 
 export default function App() {
+  useOtaUpdateOnLaunch();
+
   return (
     <AppErrorBoundary>
       <SafeAreaProvider>

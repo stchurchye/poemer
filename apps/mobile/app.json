@@ -49,7 +49,9 @@
       "predictiveBackGestureEnabled": false
     },
     "updates": {
-      "url": "https://u.expo.dev/740c61a8-05ca-4db8-8ac3-c22d21bd3ce2"
+      "url": "https://u.expo.dev/740c61a8-05ca-4db8-8ac3-c22d21bd3ce2",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": {
       "policy": "appVersion"
