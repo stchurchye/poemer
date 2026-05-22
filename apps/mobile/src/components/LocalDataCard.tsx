@@ -72,7 +72,7 @@ export function LocalDataCard() {
     <View style={styles.card}>
       <Text style={styles.title}>{zh.me.localDataTitle}</Text>
       <Text style={styles.body}>{zh.me.localDataMode}</Text>
-      <Text style={styles.body}>{zh.me.localDataAiHint}</Text>
+      <Text style={styles.body}>{zh.me.localDataBackupHint}</Text>
       <Text style={styles.meta}>本地数据大小：{formatBytes(bytes)}</Text>
       <View style={styles.actions}>
         <Pressable style={styles.button} onPress={() => void exportData()}>
@@ -97,7 +97,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   title: { fontSize: typography.button, fontWeight: '700', color: colors.text },
-  body: { fontSize: typography.caption, color: colors.textMuted, lineHeight: 22 },
+  body: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+    lineHeight: Math.round(typography.caption * 1.45),
+  },
   meta: { fontSize: typography.caption, color: colors.textMuted },
   actions: { flexDirection: 'row', gap: 12, marginTop: 8 },
   button: {

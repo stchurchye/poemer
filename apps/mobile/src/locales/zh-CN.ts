@@ -200,7 +200,7 @@ export const zh = {
     rejectRetry: '再改一版',
   },
   chat: {
-    title: '问问题 · 小助手陪您聊',
+    title: '问小助手',
     sideTitle: '问问题',
     sideHint: '有什么想聊的都可以问。写作改稿请去「写作」里，小助手会在那边帮您改文章。',
     openTools: '切换话题',
@@ -252,8 +252,7 @@ export const zh = {
     title: '设置',
     localDataTitle: '本地数据',
     localDataMode: '文章和聊天记录只存在本机',
-    localDataAiHint:
-      'AI 改稿、问问题、云端识图和云端听写需要联网访问模型服务（直连厂商，不经诗人服务器）',
+    localDataBackupHint: '文章导出后发送到微信即可备份',
     localDataExport: '导出数据包',
     localDataImport: '导入数据包',
     localDataExportDone: '数据包已导出',

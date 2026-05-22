@@ -1058,16 +1058,14 @@ export function WritingScreen({ navigation, route }: Props) {
             </ScrollView>
 
             <View style={styles.chapterTitleRow}>
-              <View style={styles.chapterTitleMain}>
-                <Text style={styles.chapterTitleText} numberOfLines={2}>
-                  {doc.title}
+              <Text style={styles.chapterTitleText} numberOfLines={2}>
+                {doc.title}
+              </Text>
+              {!speaking && bodyDraft.trim() ? (
+                <Text style={styles.readCursorHint} numberOfLines={2}>
+                  {zh.writing.readCursorHint}
                 </Text>
-                {!speaking && bodyDraft.trim() ? (
-                  <Text style={styles.readCursorHint} numberOfLines={2}>
-                    {zh.writing.readCursorHint}
-                  </Text>
-                ) : null}
-              </View>
+              ) : null}
               <View style={styles.chapterTitleActions}>
                 <WritingToolbarChip
                   label={zh.writing.renameArticleTitle}
@@ -1434,12 +1432,12 @@ const styles = StyleSheet.create({
   },
   toolbarChip: {
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.primaryBorder,
     backgroundColor: colors.primarySoft,
-    minHeight: 44,
+    minHeight: 52,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1463,34 +1461,40 @@ const styles = StyleSheet.create({
   },
   toolbarChipTextActive: { color: colors.onPrimary },
   chapterBar: {
-    maxHeight: 56,
+    maxHeight: 80,
     marginBottom: 4,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 6 },
+  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 8, paddingVertical: 4 },
   chapterTab: {
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderRadius: 16,
     backgroundColor: colors.surface,
-    marginVertical: 6,
+    marginVertical: 4,
     borderWidth: 1,
     borderColor: colors.border,
+    minHeight: 52,
+    justifyContent: 'center',
   },
   chapterTabActive: {
     backgroundColor: colors.primarySoft,
     borderColor: colors.primary,
   },
-  chapterTabText: { fontSize: typography.caption, color: colors.textMuted },
+  chapterTabText: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+    lineHeight: Math.round(typography.caption * 1.2),
+  },
   chapterTabTextActive: { color: colors.text, fontWeight: '600' },
   chapterAdd: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     borderRadius: 16,
     backgroundColor: colors.primarySoft,
-    marginVertical: 6,
-    minHeight: 40,
+    marginVertical: 4,
+    minHeight: 52,
     justifyContent: 'center',
   },
   chapterAddDisabled: { opacity: 0.6 },
@@ -1504,8 +1508,6 @@ const styles = StyleSheet.create({
   },
   toastText: { fontSize: typography.caption, color: colors.text, textAlign: 'center' },
   chapterTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 12,
     paddingTop: 10,
     paddingBottom: 10,
@@ -1513,16 +1515,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  chapterTitleMain: {
-    flex: 1,
-    minWidth: 0,
-    gap: 6,
-  },
   chapterTitleActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
-    flexShrink: 0,
   },
   chapterTitleText: {
     fontSize: typography.title,
