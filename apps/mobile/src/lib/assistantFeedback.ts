@@ -4,7 +4,9 @@ import { speakText, stopSpeaking } from './tts';
 type ExpoAv = typeof import('expo-av');
 
 let speakGeneration = 0;
+let readySoundPlayGeneration = 0;
 let readySound: import('expo-av').Audio.Sound | null = null;
+let audioModeReady = false;
 
 function bumpGeneration(): number {
   speakGeneration += 1;
@@ -31,30 +33,43 @@ async function getAv(): Promise<ExpoAv | null> {
   }
 }
 
+async function ensurePlaybackAudioMode(av: ExpoAv): Promise<void> {
+  if (audioModeReady) return;
+  await av.Audio.setAudioModeAsync({
+    playsInSilentModeIOS: true,
+    allowsRecordingIOS: false,
+    interruptionModeAndroid: av.InterruptionModeAndroid.DuckOthers,
+    shouldDuckAndroid: true,
+  });
+  audioModeReady = true;
+}
+
 /** 短促提示音：助手回复已就绪（不阻塞 UI） */
 export function playAssistantReadySound(): void {
+  const gen = ++readySoundPlayGeneration;
   void (async () => {
     const av = await getAv();
-    if (!av) return;
+    if (!av || gen !== readySoundPlayGeneration) return;
 
     try {
-      await av.Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        allowsRecordingIOS: false,
-      });
-      if (readySound) {
-        try {
-          await readySound.unloadAsync();
-        } catch {
-          // ignore
-        }
-        readySound = null;
-      }
+      await ensurePlaybackAudioMode(av);
       const { sound } = await av.Audio.Sound.createAsync(
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         require('../../assets/sounds/assistant-ready.wav'),
         { shouldPlay: true, volume: 0.65 },
       );
+      if (gen !== readySoundPlayGeneration) {
+        await sound.unloadAsync();
+        return;
+      }
+      if (readySound) {
+        try {
+          await readySound.stopAsync();
+          await readySound.unloadAsync();
+        } catch {
+          // ignore
+        }
+      }
       readySound = sound;
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
@@ -79,10 +94,11 @@ export function announceAssistantWaiting(text?: string): void {
   })();
 }
 
-/** 念出助手话术（无提示音，用于意图确认等） */
+/** 念出助手话术（带提示音，用于意图确认等） */
 export function announceAssistantSpeak(text?: string): void {
   const trimmed = text?.trim();
   if (!trimmed) return;
+  playAssistantReadySound();
   const gen = bumpGeneration();
   void (async () => {
     await stopSpeaking();
@@ -96,9 +112,9 @@ export function announceAssistantReplyParallel(fullText: string): void {
   const trimmed = fullText.trim();
   if (!trimmed) return;
 
+  playAssistantReadySound();
   const gen = bumpGeneration();
   void stopSpeaking();
-  playAssistantReadySound();
   void (async () => {
     if (gen !== speakGeneration) return;
     await speakTextAsync(trimmed);
@@ -107,6 +123,7 @@ export function announceAssistantReplyParallel(fullText: string): void {
 
 export async function cancelAssistantFeedback(): Promise<void> {
   bumpGeneration();
+  readySoundPlayGeneration += 1;
   await stopSpeaking();
   if (readySound) {
     try {

@@ -31,6 +31,7 @@ import {
   announceAssistantSpeak,
   announceAssistantWaiting,
   cancelAssistantFeedback,
+  playAssistantReadySound,
 } from '../lib/assistantFeedback';
 import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
 import { ReconnectBanner } from './ReconnectBanner';
@@ -888,6 +889,7 @@ export function WritingAssistantPanel({
       for (const m of newOnes) {
         if (m.role !== 'assistant' || !m.content.trim()) continue;
         if (m.kind === 'notice' || m.kind === 'revision_ready') continue;
+        playAssistantReadySound();
         await revealMessage(m.id, m.content);
       }
 

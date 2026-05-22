@@ -253,7 +253,8 @@ export const zh = {
     title: '设置',
     localDataTitle: '本地数据',
     localDataMode: '文章和聊天记录只存在本机',
-    localDataBackupHint: '文章导出后发送到微信即可备份',
+    localDataBackupHint:
+      '请点击「导出数据包」，分享到微信任意聊天即可留档，避免丢失。请定期操作。',
     localDataExport: '导出数据包',
     localDataImport: '导入数据包',
     localDataExportDone: '数据包已导出',
@@ -382,12 +383,12 @@ export const zh = {
     },
     writing_rename: {
       title: '改题目',
-      message: '请点写作页文章标题旁的「改题目」，输入新名称后保存。',
+      message: '请点写作页文章标题行右侧的「改题目」，输入新名称后保存。',
       primaryButton: '去写作',
     },
     writing_history: {
       title: '历史版本',
-      message: '请点写作页顶部「历史版本」，点某一版即可查看或恢复。',
+      message: '请点写作页文章标题行右侧的「历史版本」，点某一版即可查看或恢复。',
       primaryButton: '去写作',
     },
     chat_switch_topic: {

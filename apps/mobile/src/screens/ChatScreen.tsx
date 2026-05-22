@@ -332,11 +332,15 @@ export function ChatScreen() {
     try {
       const res = await api.compactChatSession(sessionId);
       setContextUsage(res.data.contextUsage);
+      const compactText = res.data.assistantMessage.content?.trim() ?? '';
       setMessages((prev) => [
         ...prev,
         { ...res.data.assistantMessage, status: 'done' as const },
       ]);
       scrollToEnd();
+      if (compactText) {
+        announceAssistantReplyParallel(compactText);
+      }
       setContextDetailUsage(null);
     } catch (e) {
       const { message, hint } = apiErrorText(e);
@@ -403,7 +407,9 @@ export function ChatScreen() {
           contextSelection: contextSelection ?? undefined,
         });
         const fullText = res.data.assistant?.content ?? '';
-        announceAssistantReplyParallel(fullText);
+        if (fullText.trim()) {
+          announceAssistantReplyParallel(fullText);
+        }
         setMessages((prev) => {
           const rest = prev.filter((m) => m.id !== userId && m.id !== assistantId);
           return [

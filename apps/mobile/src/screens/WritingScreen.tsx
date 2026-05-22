@@ -1091,14 +1091,16 @@ export function WritingScreen({ navigation, route }: Props) {
                 </ScrollView>
 
                 <View style={styles.chapterTitleRow}>
-                  <Text style={styles.chapterTitleText} numberOfLines={2}>
-                    {doc.title}
-                  </Text>
-                  {!speaking && bodyDraft.trim() ? (
-                    <Text style={styles.readCursorHint} numberOfLines={2}>
-                      {zh.writing.readCursorHint}
+                  <View style={styles.chapterTitleMain}>
+                    <Text style={styles.chapterTitleText} numberOfLines={2}>
+                      {doc.title}
                     </Text>
-                  ) : null}
+                    {!speaking && bodyDraft.trim() ? (
+                      <Text style={styles.readCursorHint} numberOfLines={2}>
+                        {zh.writing.readCursorHint}
+                      </Text>
+                    ) : null}
+                  </View>
                   <View style={styles.chapterTitleActions}>
                     <WritingToolbarChip
                       label={zh.writing.renameArticleTitle}
@@ -1574,18 +1576,26 @@ const styles = StyleSheet.create({
   },
   toastText: { fontSize: typography.caption, color: colors.text, textAlign: 'center' },
   chapterTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
     paddingHorizontal: 12,
     paddingTop: 4,
     paddingBottom: 4,
-    gap: 6,
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  chapterTitleMain: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
   },
   chapterTitleActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
+    flexShrink: 0,
+    gap: 6,
   },
   chapterTitleText: {
     fontSize: typography.title,
