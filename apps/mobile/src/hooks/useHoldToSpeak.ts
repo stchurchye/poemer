@@ -3,11 +3,11 @@ import { Linking } from 'react-native';
 import { useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { appAlert } from '../lib/appAlert';
 import { apiErrorText } from '../lib/apiError';
+import { cancelAssistantFeedback } from '../lib/assistantFeedback';
 import {
   cancelCloudRecording,
   getCloudSpeechStatus,
   nativeModuleRebuildHint,
-  prepareCloudRecording,
   startCloudRecording,
   stopCloudRecordingAndTranscribe,
 } from '../lib/cloudSpeech';
@@ -36,20 +36,31 @@ function joinTranscript(results: { transcript?: string }[] | undefined): string 
     .join('');
 }
 
+function heldMs(pressStartedAt: number, listenStartedAt: number): number {
+  const anchor = listenStartedAt || pressStartedAt;
+  return Date.now() - anchor;
+}
+
 export function useHoldToSpeak(onComplete: (text: string) => void) {
   const [holding, setHolding] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [cloudMode, setCloudMode] = useState(false);
 
+  const cloudModeRef = useRef(false);
   const fingerDownRef = useRef(false);
   const sessionActiveRef = useRef(false);
-  const listenStartedRef = useRef(0);
+  const pressStartedAtRef = useRef(0);
+  const listenStartedAtRef = useRef(0);
   const transcriptRef = useRef('');
   const finalTranscriptRef = useRef('');
   const errorHandledRef = useRef(false);
   const userCancelledRef = useRef(false);
   const initRetryRef = useRef(0);
   const startGenerationRef = useRef(0);
+
+  useEffect(() => {
+    cloudModeRef.current = cloudMode;
+  }, [cloudMode]);
 
   useEffect(() => {
     void (async () => {
@@ -66,14 +77,14 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
   }, []);
 
   useSpeechRecognitionEvent('start', () => {
-    if (cloudMode) return;
+    if (cloudModeRef.current) return;
     sessionActiveRef.current = true;
-    listenStartedRef.current = Date.now();
+    listenStartedAtRef.current = Date.now();
     setHolding(true);
   });
 
   useSpeechRecognitionEvent('result', (event) => {
-    if (cloudMode) return;
+    if (cloudModeRef.current) return;
     const text = joinTranscript(event.results);
     if (!text) return;
     transcriptRef.current = text;
@@ -81,7 +92,7 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
   });
 
   useSpeechRecognitionEvent('error', (event) => {
-    if (cloudMode) return;
+    if (cloudModeRef.current) return;
     sessionActiveRef.current = false;
     setHolding(false);
     if (event.error === 'aborted' || userCancelledRef.current) {
@@ -105,17 +116,17 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
     }
 
     errorHandledRef.current = true;
-    const holdMs = Date.now() - listenStartedRef.current;
+    const holdMs = heldMs(pressStartedAtRef.current, listenStartedAtRef.current);
     if (event.error === 'no-speech' && holdMs < MIN_HOLD_MS) return;
     appAlert('听写提示', speechErrorMessage(event.error, event.message));
   });
 
   useSpeechRecognitionEvent('end', () => {
-    if (cloudMode) return;
+    if (cloudModeRef.current) return;
     sessionActiveRef.current = false;
     setHolding(false);
 
-    const holdMs = Date.now() - listenStartedRef.current;
+    const holdMs = heldMs(pressStartedAtRef.current, listenStartedAtRef.current);
     setTimeout(() => {
       if (errorHandledRef.current) {
         errorHandledRef.current = false;
@@ -146,6 +157,7 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
     const status = await getCloudSpeechStatus();
     if (status.ok) {
       setCloudMode(true);
+      cloudModeRef.current = true;
       return false;
     }
     if (status.reason === 'no_key') {
@@ -160,7 +172,8 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
     if (transcribing) return;
 
     fingerDownRef.current = true;
-    listenStartedRef.current = Date.now();
+    pressStartedAtRef.current = Date.now();
+    listenStartedAtRef.current = 0;
 
     const ok = await ensureSpeechPermissions();
     if (!fingerDownRef.current) return;
@@ -172,17 +185,22 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
       return;
     }
 
-    if (cloudMode) {
+    setHolding(true);
+
+    if (cloudModeRef.current) {
+      transcriptRef.current = '';
+      finalTranscriptRef.current = '';
       try {
-        await prepareCloudRecording();
+        await cancelAssistantFeedback();
         await startCloudRecording();
         sessionActiveRef.current = true;
-        setHolding(true);
+        listenStartedAtRef.current = Date.now();
       } catch (e) {
         sessionActiveRef.current = false;
         setHolding(false);
-        const msg = String(e);
         setCloudMode(false);
+        cloudModeRef.current = false;
+        const msg = String(e);
         if (/permission|Permissions|原生模块|expo-av/i.test(msg)) {
           appAlert('听写提示', zh.voice.cloudFallbackLocal);
         } else {
@@ -202,9 +220,13 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
 
     const engine = await prepareSpeechEngine();
     if (generation !== startGenerationRef.current) return;
-    if (!fingerDownRef.current) return;
+    if (!fingerDownRef.current) {
+      setHolding(false);
+      return;
+    }
 
     if (!engine.ok) {
+      setHolding(false);
       const blocked = await alertCloudUnavailable();
       if (blocked) return;
       if (isIosSimulator()) {
@@ -215,20 +237,27 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
       return;
     }
 
+    if (!fingerDownRef.current) {
+      setHolding(false);
+      return;
+    }
+
     try {
       startListening();
     } catch {
+      setHolding(false);
       appAlert('听写提示', '暂时无法开始听您说话，请稍后再试');
     }
-  }, [alertCloudUnavailable, cloudMode, transcribing]);
+  }, [alertCloudUnavailable, transcribing]);
 
   const onPressOut = useCallback(() => {
     fingerDownRef.current = false;
+    const pressHeld = Date.now() - pressStartedAtRef.current;
 
-    if (cloudMode && sessionActiveRef.current) {
+    if (cloudModeRef.current && sessionActiveRef.current) {
       sessionActiveRef.current = false;
       setHolding(false);
-      const held = Date.now() - listenStartedRef.current;
+      const held = heldMs(pressStartedAtRef.current, listenStartedAtRef.current);
       if (held < MIN_HOLD_MS) {
         void cancelCloudRecording();
         appAlert('提示', zh.voice.holdLonger);
@@ -250,14 +279,28 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
       return;
     }
 
+    if (cloudModeRef.current && !sessionActiveRef.current) {
+      setHolding(false);
+      void cancelCloudRecording();
+      if (pressHeld < MIN_HOLD_MS) {
+        appAlert('提示', zh.voice.holdLonger);
+      }
+      return;
+    }
+
     if (!sessionActiveRef.current) {
       userCancelledRef.current = true;
       abortListening();
       setHolding(false);
+      if (pressHeld < MIN_HOLD_MS) {
+        appAlert('提示', zh.voice.holdLonger);
+      } else {
+        appAlert('听写提示', '听写还没准备好，请再按住试一次');
+      }
       return;
     }
 
-    const held = Date.now() - listenStartedRef.current;
+    const held = heldMs(pressStartedAtRef.current, listenStartedAtRef.current);
     sessionActiveRef.current = false;
     setHolding(false);
 
@@ -269,7 +312,7 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
     }
 
     stopListening();
-  }, [cloudMode, onComplete]);
+  }, [onComplete]);
 
   return { holding: holding || transcribing, transcribing, onPressIn, onPressOut };
 }
