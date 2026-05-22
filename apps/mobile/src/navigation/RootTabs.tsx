@@ -49,13 +49,15 @@ export function RootTabs() {
       screenOptions={{
         lazy: true,
         headerShown: false,
+        tabBarIcon: () => null,
+        tabBarIconStyle: { display: 'none', height: 0, width: 0 },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           paddingBottom: Math.max(insets.bottom, isTablet ? 8 : 4),
-          paddingTop: isTablet ? 6 : 4,
+          paddingTop: isTablet ? 8 : 6,
           height: tabBarHeight + insets.bottom,
         },
         tabBarLabelStyle: { fontSize: isTablet ? 22 : 20, fontWeight: '600' },

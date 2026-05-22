@@ -40,7 +40,7 @@ function useWindowLayout(): WindowLayout {
       chatMaxWidth: isTablet ? 960 : width,
       pageMaxWidth: isTablet ? 1100 : width,
       horizontalPadding: isTablet ? 28 : 16,
-      tabBarHeight: isTablet ? 76 : 68,
+      tabBarHeight: isTablet ? 64 : 52,
     };
   }, [width, height]);
 }

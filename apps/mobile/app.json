@@ -27,6 +27,7 @@
       "bundleIdentifier": "com.anonymous.shiren"
     },
     "android": {
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.stchurch.shiren",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
