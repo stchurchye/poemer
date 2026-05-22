@@ -204,6 +204,12 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
     onRetryBlur,
     expandChrome,
   } = useMultiInputChromeCollapse();
+  /** 收起顶栏时保持同一输入框挂载，并展开建议正文区 */
+  useEffect(() => {
+    if (chromeCollapsed && !retryPanelOpen && focusSection !== 'edit') {
+      setFocusSection('edit');
+    }
+  }, [chromeCollapsed, retryPanelOpen, focusSection]);
   const busy = retrying || accepting;
   /** 仅用户手改建议正文时才防抖更新 diff，避免覆盖服务端加载结果 */
   const diffDebounceFromUser = useRef(false);
@@ -461,47 +467,9 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
           )}
 
           <View style={styles.contentAboveFooter}>
-            {chromeCollapsed && !retryPanelOpen ? (
-              <View style={styles.collapsedEditPane}>
-                <Text
-                  style={[
-                    styles.collapsedEditLabel,
-                    { fontSize: panelLabelSize, lineHeight: panelLabelLineHeight },
-                  ]}
-                >
-                  {zh.diff.editPanelLabel}
-                </Text>
-                <View style={styles.panelBody}>
-                  {revisionLoading && !editedText.trim() && !newText?.trim() ? (
-                    <View style={styles.revisionLoading}>
-                      <ActivityIndicator color={colors.primary} />
-                      <Text style={[styles.revisionLoadingText, { fontSize: contentFontSize }]}>
-                        {zh.common.loading}
-                      </Text>
-                    </View>
-                  ) : (
-                    <AppTextInput
-                      containerStyle={styles.editInputWrap}
-                      style={[
-                        styles.editInput,
-                        { fontSize: contentFontSize, lineHeight: contentLineHeight },
-                      ]}
-                      placeholder={zh.diff.editSuggestionPlaceholder}
-                      placeholderTextColor={colors.textMuted}
-                      value={editedText}
-                      onChangeText={handleEditedTextChange}
-                      onFocus={onEditFocus}
-                      onBlur={onEditBlur}
-                      multiline
-                      scrollEnabled
-                      textAlignVertical="top"
-                      editable={!busy && canEdit}
-                    />
-                  )}
-                </View>
-              </View>
-            ) : chromeCollapsed && retryPanelOpen ? null : (
+            {chromeCollapsed && retryPanelOpen ? null : (
             <View style={styles.sectionsStack}>
+            {!chromeCollapsed ? (
             <FocusSectionPanel
               section="diff"
               focus={focusSection}
@@ -527,10 +495,11 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
                 />
               </ScrollView>
             </FocusSectionPanel>
+            ) : null}
 
             <FocusSectionPanel
               section="edit"
-              focus={focusSection}
+              focus={chromeCollapsed ? 'edit' : focusSection}
               onFocus={setFocusSection}
               title={zh.diff.editPanelLabel}
               labelSize={panelLabelSize}
@@ -689,24 +658,6 @@ const styles = StyleSheet.create({
   chromePeekAction: {
     fontWeight: '600',
     color: colors.primary,
-  },
-  collapsedEditPane: {
-    flex: 1,
-    minHeight: 0,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    overflow: 'hidden',
-  },
-  collapsedEditLabel: {
-    fontWeight: '700',
-    color: colors.text,
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   contentAboveFooter: {
     flex: 1,
