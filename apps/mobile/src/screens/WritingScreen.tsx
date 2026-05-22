@@ -119,7 +119,7 @@ function WritingToolbarChip({
       ]}
       onPress={onPress}
       disabled={disabled || loading}
-      hitSlop={4}
+      hitSlop={8}
     >
       {loading ? (
         <ActivityIndicator
@@ -1447,8 +1447,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 48,
+    paddingVertical: 6,
+    minHeight: 40,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
@@ -1474,17 +1474,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 10,
-    gap: 10,
+    paddingVertical: 6,
+    gap: 8,
   },
   toolbarChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.primaryBorder,
     backgroundColor: colors.primarySoft,
-    minHeight: 52,
+    minHeight: 40,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1508,21 +1508,21 @@ const styles = StyleSheet.create({
   },
   toolbarChipTextActive: { color: colors.onPrimary },
   chapterBar: {
-    maxHeight: 80,
-    marginBottom: 4,
+    maxHeight: 56,
+    marginBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 8, paddingVertical: 4 },
+  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 6, paddingVertical: 2 },
   chapterTab: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
     backgroundColor: colors.surface,
-    marginVertical: 4,
+    marginVertical: 2,
     borderWidth: 1,
     borderColor: colors.border,
-    minHeight: 52,
+    minHeight: 40,
     justifyContent: 'center',
   },
   chapterTabActive: {
@@ -1536,12 +1536,12 @@ const styles = StyleSheet.create({
   },
   chapterTabTextActive: { color: colors.text, fontWeight: '600' },
   chapterAdd: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
     backgroundColor: colors.primarySoft,
-    marginVertical: 4,
-    minHeight: 52,
+    marginVertical: 2,
+    minHeight: 40,
     justifyContent: 'center',
   },
   chapterAddDisabled: { opacity: 0.6 },
@@ -1556,9 +1556,9 @@ const styles = StyleSheet.create({
   toastText: { fontSize: typography.caption, color: colors.text, textAlign: 'center' },
   chapterTitleRow: {
     paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 10,
-    gap: 10,
+    paddingTop: 6,
+    paddingBottom: 6,
+    gap: 8,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
