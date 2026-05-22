@@ -123,6 +123,7 @@ export function ChatScreen() {
   const [bootstrapErrorHint, setBootstrapErrorHint] = useState<string | undefined>();
   useSuppressGlobalOfflineBanner(Boolean(bootstrapError));
   const { listRef, onScroll, scrollToEnd, scrollToEndIfFollowing } = useListAutoScroll();
+  const sendingRef = useRef(false);
   const typewriterAbortRef = useRef<AbortController | null>(null);
   const visibleIndicesRef = useRef<number[]>([]);
   const viewabilityConfig = useRef({
@@ -278,13 +279,19 @@ export function ChatScreen() {
   }, []);
 
   useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+
+  useEffect(() => {
     if (!sending) return;
     const timer = setTimeout(() => {
+      if (!sendingRef.current) return;
       setMessages((prev) =>
         prev.map((m) =>
           m.status === 'pending' ? { ...m, displayContent: thinkingLongLine } : m,
         ),
       );
+      if (!sendingRef.current) return;
       void announceAssistantWaiting(thinkingLongLine);
     }, 28_000);
     return () => clearTimeout(timer);
@@ -402,6 +409,7 @@ export function ChatScreen() {
           contextSelection: contextSelection ?? undefined,
         });
         const fullText = res.data.assistant?.content ?? '';
+        sendingRef.current = false;
         const ttsReady = fullText.trim()
           ? announceAssistantReplySync(fullText)
           : Promise.resolve();
@@ -465,6 +473,7 @@ export function ChatScreen() {
         scrollToEnd();
         void refreshSessions();
       } finally {
+        sendingRef.current = false;
         setSending(false);
       }
     },
@@ -564,6 +573,7 @@ export function ChatScreen() {
         if (source === 'text') setInput(trimmed);
         appAlert(zh.chat.intentAnalyzeFailed, hint ? `${message}\n\n${hint}` : message);
       } finally {
+        void cancelAssistantFeedback();
         setIntentAnalyzing(false);
       }
     },

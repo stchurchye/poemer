@@ -203,6 +203,7 @@ export function WritingAssistantPanel({
   const [composerOpen, setComposerOpen] = useState(false);
   const { listRef, onScroll, scrollToEnd, scrollToEndIfFollowing } = useListAutoScroll();
   const composeRef = useRef<TextInput>(null);
+  const inFlightRef = useRef(false);
   const typewriterAbortRef = useRef<AbortController | null>(null);
   const visibleIndicesRef = useRef<number[]>([]);
   const viewabilityConfig = useRef({
@@ -422,8 +423,13 @@ export function WritingAssistantPanel({
   ]);
 
   useEffect(() => {
+    inFlightRef.current = inFlight;
+  }, [inFlight]);
+
+  useEffect(() => {
     if (!inFlight) return;
     const timer = setTimeout(() => {
+      if (!inFlightRef.current) return;
       setMessages((prev) =>
         prev.map((m) =>
           m.status === 'pending'
@@ -431,6 +437,7 @@ export function WritingAssistantPanel({
             : m,
         ),
       );
+      if (!inFlightRef.current) return;
       void announceAssistantWaiting(thinkingLongLine);
     }, 28_000);
     return () => clearTimeout(timer);
@@ -561,8 +568,8 @@ export function WritingAssistantPanel({
           return next;
         });
         scrollToEnd();
-        const ttsReady = announceAssistantReplySync(fullText);
-        await ttsReady;
+        inFlightRef.current = false;
+        await announceAssistantReplySync(fullText);
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -872,6 +879,9 @@ export function WritingAssistantPanel({
         });
       }
 
+      inFlightRef.current = false;
+      await cancelAssistantFeedback();
+
       const fresh = await api.getWritingAssistantMessages(documentId);
       const newOnes = fresh.data.filter((m) => !beforeIds.has(m.id));
       const displayMessages = dropRedundantWorkingNotices(fresh.data, newOnes);
@@ -896,9 +906,7 @@ export function WritingAssistantPanel({
       }
 
       if (revisionReadyMsg?.content.trim()) {
-        await cancelAssistantFeedback();
-        const ttsReady = announceAssistantReplySync(revisionReadyMsg.content);
-        await ttsReady;
+        await announceAssistantReplySync(revisionReadyMsg.content);
         await revealMessage(revisionReadyMsg.id, revisionReadyMsg.content);
       }
 

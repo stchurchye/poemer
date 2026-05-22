@@ -121,14 +121,14 @@ export function announceAssistantReplyParallel(fullText: string): void {
   })();
 }
 
-/** 回复到达：先合成/起播 TTS，resolve 后再开打字机，使文字与语音同步 */
-export function announceAssistantReplySync(fullText: string): Promise<void> {
+/** 回复到达：先停掉等待/超时朗读，再合成起播，与打字机同步 */
+export async function announceAssistantReplySync(fullText: string): Promise<void> {
   const trimmed = fullText.trim();
-  if (!trimmed) return Promise.resolve();
+  if (!trimmed) return;
 
+  await cancelAssistantFeedback();
   playAssistantReadySound();
   const gen = bumpGeneration();
-  void stopSpeaking();
 
   return new Promise<void>((resolve) => {
     let resolved = false;
