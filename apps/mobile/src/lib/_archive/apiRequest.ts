@@ -1,8 +1,11 @@
+/**
+ * @deprecated 本地优先后业务走 localApi。归档保留云 API 请求实现供参考。
+ */
+import { networkErrorDetail } from '../apiConnectivity';
 import {
-  networkErrorDetail,
   notifyApiReachable,
   notifyApiUnreachable,
-} from './apiConnectivity';
+} from './cloudApiHealth';
 
 export type ApiRequestOptions = RequestInit & {
   timeoutMs?: number;

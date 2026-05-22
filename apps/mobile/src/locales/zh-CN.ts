@@ -20,8 +20,6 @@ export const zh = {
     duplicateDocDone: '已复制为新文稿',
     duplicateDocFailed: '复制没成功',
     renameDocAction: '改名称',
-    /** @deprecated 请用 network.hint* + apiErrorText */
-    newDocApiHint: '请先在电脑上打开终端，进入项目文件夹，运行：npm run dev:api',
     readMode: '开始朗读',
     stopReading: '停止朗读',
     reading: '正在朗读…',
@@ -399,6 +397,9 @@ export const zh = {
     },
   },
   network: {
+    unreachableLocalFirst: '网络不通，请稍后再试',
+    hintLocalFirst:
+      '请检查手机网络是否正常；对话与写作需在「我的」中配置大模型 API Key（DashScope / ZenMux）。',
     unreachableLocal: '连不上小助手服务',
     unreachableLan: '连不上小助手服务',
     unreachableCloud: '连不上服务器',

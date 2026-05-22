@@ -40,6 +40,9 @@ function getDevHost(): string {
   return '127.0.0.1';
 }
 
-/** 开发环境 API 地址（默认端口 3921） */
+/** App 以本地存储 + 直连厂商 API 为主，不经诗人后端 */
+export const LOCAL_FIRST_MODE = true;
+
+/** 开发环境 API 地址（默认端口 3921；仅遗留云 API / 健康检查用） */
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ?? `http://${getDevHost()}:${SHIREN_API_PORT}`;

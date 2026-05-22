@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './config';
+import { API_BASE_URL, LOCAL_FIRST_MODE } from './config';
 import { zh } from '../locales/zh-CN';
 
 export type ApiHostKind = 'localDev' | 'lanDev' | 'cloud';
@@ -22,7 +22,7 @@ export function classifyApiHost(baseUrl: string = API_BASE_URL): ApiHostKind {
   }
 }
 
-export function formatApiServerAddress(baseUrl: string = API_BASE_URL): string {
+function formatApiServerAddress(baseUrl: string = API_BASE_URL): string {
   return baseUrl.replace(/\/$/, '');
 }
 
@@ -34,6 +34,12 @@ export function networkErrorMessage(
   code?: string,
   baseUrl: string = API_BASE_URL,
 ): string {
+  if (LOCAL_FIRST_MODE) {
+    if (code === 'TIMEOUT') return zh.network.timeout;
+    if (code === 'BAD_RESPONSE') return zh.network.badResponse;
+    return zh.network.unreachableLocalFirst;
+  }
+
   const hostKind = classifyApiHost(baseUrl);
 
   if (code === 'TIMEOUT') {
@@ -53,6 +59,10 @@ export function networkErrorMessage(
 }
 
 export function networkErrorHint(baseUrl: string = API_BASE_URL): string {
+  if (LOCAL_FIRST_MODE) {
+    return zh.network.hintLocalFirst;
+  }
+
   const hostKind = classifyApiHost(baseUrl);
   const address = formatApiServerAddress(baseUrl);
 
@@ -75,48 +85,9 @@ export function networkErrorDetail(
   };
 }
 
-const HEALTH_TIMEOUT_MS = 8_000;
-
-/** 探测 API 是否可达（用于重连按钮与启动检查） */
-export async function checkApiHealth(
-  baseUrl: string = API_BASE_URL,
-): Promise<boolean> {
-  const url = `${formatApiServerAddress(baseUrl)}/health`;
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), HEALTH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { signal: ac.signal });
-    if (!res.ok) return false;
-    const json = (await res.json()) as { ok?: boolean };
-    return json.ok === true;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-type ConnectivityListener = () => void;
-
-let onReachableListener: ConnectivityListener | null = null;
-let onUnreachableListener: ConnectivityListener | null = null;
-
-export function registerConnectivityListeners(handlers: {
-  onReachable?: ConnectivityListener;
-  onUnreachable?: ConnectivityListener;
-}): () => void {
-  onReachableListener = handlers.onReachable ?? null;
-  onUnreachableListener = handlers.onUnreachable ?? null;
-  return () => {
-    onReachableListener = null;
-    onUnreachableListener = null;
-  };
-}
-
-export function notifyApiReachable(): void {
-  onReachableListener?.();
-}
-
-export function notifyApiUnreachable(): void {
-  onUnreachableListener?.();
+/** 仅对明确与网络/厂商相关的错误追加默认 hint（见 apiLoadErrorText） */
+export function shouldAppendNetworkHint(code?: string): boolean {
+  if (isConnectivityErrorCode(code)) return true;
+  if (code?.startsWith('MODEL_')) return true;
+  return code === 'VENDOR_NETWORK';
 }

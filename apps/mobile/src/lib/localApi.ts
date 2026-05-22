@@ -39,6 +39,8 @@ import {
   ZenMuxError,
   zenmuxChatWithImages,
   type ZenMuxChatImage,
+  errorMessages,
+  type ErrorCode,
 } from '@shiren/shared';
 import { DEEPSEEK_MODEL_PRO } from '@shiren/shared';
 import { getZenMuxApiKey } from './zenmuxKey';
@@ -91,10 +93,25 @@ function requireStore(store: LocalStore | null): LocalStore {
   return store;
 }
 
-function notFound(message: string): never {
-  const err = new Error(message) as Error & { code?: string };
-  err.code = 'NOT_FOUND';
+const LOCAL_ERROR_CODE: Record<string, ErrorCode> = {
+  DOCUMENT_NOT_FOUND: 'NOT_FOUND',
+  CHAT_SESSION_NOT_FOUND: 'NOT_FOUND',
+  REVISION_NOT_FOUND: 'REVISION_NOT_FOUND',
+  BLOCK_NOT_FOUND: 'BLOCK_NOT_FOUND',
+  WRITING_ASSISTANT_MESSAGE_NOT_FOUND: 'ASSISTANT_INTENT_NOT_FOUND',
+  VALIDATION: 'VALIDATION',
+};
+
+function throwAppError(code: ErrorCode): never {
+  const entry = errorMessages[code];
+  const err = new Error(entry.message) as Error & { code?: string; hint?: string };
+  err.code = code;
+  err.hint = entry.hint;
   throw err;
+}
+
+function notFound(kind: string): never {
+  throwAppError(LOCAL_ERROR_CODE[kind] ?? 'NOT_FOUND');
 }
 
 const emptyContextUsage: ContextUsage = {
