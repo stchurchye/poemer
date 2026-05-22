@@ -13,11 +13,29 @@ let avModule: ExpoAv | null = null;
 let avLoadError: Error | null = null;
 let recording: Recording | null = null;
 
-function nativeModuleRebuildHint(): string {
+export function nativeModuleRebuildHint(): string {
   if (Platform.OS === 'android') {
-    return '云端听写需要重新编译 App（expo-av 原生模块未安装）。请在 apps/mobile 执行：npm run android，或使用 EAS 重新安装开发包';
+    return '云端听写需要重新编译 App（expo-av 原生模块未编入）。请安装最新 EAS 预览包，或在 apps/mobile 执行 npm run android 后重装';
   }
-  return '云端听写需要重新编译 App（expo-av 原生模块未安装）。请在 apps/mobile 执行：npx pod-install && npm run ios:ipad';
+  return '云端听写需要重新编译 App（expo-av 原生模块未编入）。请在 apps/mobile 执行 npx pod-install，再 npm run ios 或 ios:ipad 后重装';
+}
+
+export type CloudSpeechStatus =
+  | { ok: true }
+  | { ok: false; reason: 'no_key' }
+  | { ok: false; reason: 'no_native' };
+
+/** 百炼密钥 + expo-av 是否可用于云端按住说话 */
+export async function getCloudSpeechStatus(): Promise<CloudSpeechStatus> {
+  if (!(await getDashScopeApiKey())) {
+    return { ok: false, reason: 'no_key' };
+  }
+  try {
+    await getAv();
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'no_native' };
+  }
 }
 
 async function getAv(): Promise<ExpoAv> {
@@ -44,13 +62,8 @@ function audioFormatFromUri(uri: string): string {
 
 /** 已配置百炼密钥且本机已编入 expo-av 时启用云端听写（Qwen3-ASR-Flash） */
 export async function hasCloudSpeech(): Promise<boolean> {
-  if (!(await getDashScopeApiKey())) return false;
-  try {
-    await getAv();
-    return true;
-  } catch {
-    return false;
-  }
+  const status = await getCloudSpeechStatus();
+  return status.ok;
 }
 
 export async function prepareCloudRecording(): Promise<void> {
