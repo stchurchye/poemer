@@ -7,6 +7,10 @@ export const colors = {
   primarySoft: '#eef1fd',
   /** 小助手回复区（极浅蓝灰，不刺眼） */
   assistantBg: '#f0f2f8',
+  /** 问答案意图确认条外层卡片 */
+  intentConfirmBg: '#eef1f6',
+  /** 问答案意图确认条内文字区 */
+  intentConfirmTextBg: '#e3e6ee',
   /** 主色按钮上的文字 */
   onPrimary: '#ffffff',
   /** 弹窗遮罩 */

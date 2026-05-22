@@ -87,8 +87,8 @@ export function ChatIntentConfirmBar({
 
 const styles = StyleSheet.create({
   box: {
-    backgroundColor: colors.surface,
-    padding: 14,
+    backgroundColor: colors.intentConfirmBg,
+    padding: 28,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -97,20 +97,20 @@ const styles = StyleSheet.create({
   label: {
     color: colors.textMuted,
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: 12,
   },
   scroll: {
-    maxHeight: 120,
+    maxHeight: 240,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 10,
-    backgroundColor: colors.background,
+    backgroundColor: colors.intentConfirmTextBg,
   },
   scrollContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 20,
   },
   body: { color: colors.text },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  actions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   btn: { flex: 1 },
 });
