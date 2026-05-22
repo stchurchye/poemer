@@ -44,7 +44,6 @@ import {
 import { CopyableMessageBubble } from './CopyableMessageBubble';
 import { AssistantComposeDock } from './AssistantComposeDock';
 import { ContextComposerModal } from './ContextComposerModal';
-import { LOCAL_FIRST_HIDE_CONTEXT_UI } from '../lib/localFirst';
 import { AssistantLoadingRow, LoadingLabel } from './AssistantLoadingRow';
 import { MessageRichText } from './MessageRichText';
 import { AssistantGuidePromptBlock } from './AssistantGuidePromptBlock';
@@ -231,11 +230,6 @@ export function WritingAssistantPanel({
 
   const refreshContextUsage = useCallback(
     async (pending?: string): Promise<ContextUsage | null> => {
-      if (LOCAL_FIRST_HIDE_CONTEXT_UI) {
-        setContextUsage(null);
-        setContextUsageLoading(false);
-        return null;
-      }
       setContextUsageLoading(true);
       try {
         const res = await api.getWritingAssistantContextUsage(documentId, {
@@ -413,7 +407,7 @@ export function WritingAssistantPanel({
   }, [contextUsage, refreshContextUsage, input]);
 
   useEffect(() => {
-    if (LOCAL_FIRST_HIDE_CONTEXT_UI || !onHeaderContext || showTitle) {
+    if (!onHeaderContext || showTitle) {
       onHeaderContext?.(null);
       return;
     }
@@ -1374,7 +1368,7 @@ export function WritingAssistantPanel({
           )
         }
       />
-      {!LOCAL_FIRST_HIDE_CONTEXT_UI && contextDetailUsage ? (
+      {contextDetailUsage ? (
         <Pressable
           style={styles.contextOverlay}
           onPress={() => setContextDetailUsage(null)}
@@ -1413,8 +1407,7 @@ export function WritingAssistantPanel({
         }
         imageActionLabel={zh.writing.recognizeImage}
       />
-      {!LOCAL_FIRST_HIDE_CONTEXT_UI ? (
-        <>
+      <>
           <ContextHubSheet
             visible={contextHubOpen}
             onClose={() => setContextHubOpen(false)}
@@ -1436,7 +1429,6 @@ export function WritingAssistantPanel({
             }}
           />
         </>
-      ) : null}
     </View>
   );
 }

@@ -28,19 +28,20 @@
 
 - **数据**：本机文件 + 导出包；云端为服务器 `store.json`。
 - **AI**：本地直连厂商，写作/问问题 prompt 与上下文编排较云端**简化**；问问题**暂不支持发图**。
-- **UI**：上下文环与编排入口已隐藏；压缩上下文为占位提示。
+- **UI**：问问题 / 写作小助手可查看上下文占用、编排与压缩（需 DeepSeek 密钥；带图需 ZenMux）。
 
 ## 上下文编排 roadmap
 
-当前本地版**故意隐藏**上下文环与编排 UI（`LOCAL_FIRST_HIDE_CONTEXT_UI`），`compact` 为占位话术。与云端完整 `contextPipeline` 的对照见 [local-vs-cloud.md](./local-vs-cloud.md)。
+本地版已接入 `@shiren/engine` 的 `contextPipeline`（上下文环、真压缩、编排预览）。与云端差异见 [local-vs-cloud.md](./local-vs-cloud.md)。
 
 | 阶段 | 目标 | 状态 |
 |------|------|------|
 | A | 本地数据 + 导出；写作/问问题主路径 | ✅ |
-| B | 意图 prompt 对齐 shared；`guide` / `ready: false` / `directChat` | ✅ |
-| C | 问问题带图（ZenMux 多模态直连） | 待做 |
-| D | 将 `contextPipeline` 迁入 `@shiren/engine` 或 shared runtime；恢复环与真压缩 | 待做 |
-| E | 可选：手机 ↔ 服务器 `PersistedStore` 同步 | 未规划 |
+| B | 意图 prompt 对齐；`guide` / `ready: false` / `directChat` | ✅ |
+| C | 问问题带图（ZenMux 多模态直连） | ✅ |
+| D | `contextPipeline` 在 engine；环 + 真 compact + 编排 UI | ✅ |
+| E | 改稿执行 `runWritingExecute` + evaluation/rationale + 再改一版 | ✅ |
+| F | 可选：手机 ↔ 服务器 `PersistedStore` 同步 | 未规划 |
 
 ## 以后接后端
 

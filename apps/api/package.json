@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@shiren/engine": "*",
     "@shiren/shared": "*",
     "@hono/node-server": "^1.14.4",
     "hono": "^4.7.10",

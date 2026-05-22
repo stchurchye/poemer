@@ -33,7 +33,7 @@ docker-compose.yml    仅 legacy API
 
 | 包 | 职责 |
 |----|------|
-| `@shiren/mobile` | UI、本地 JSON 库、SecureStore、`api` → `localApi` |
+| `@shiren/mobile` | UI、本地 JSON 库、SecureStore、`api` → `localApi`（含 contextPipeline、带图问问题、完整改稿执行） |
 | `@shiren/engine` | `analyzeWritingIntentLocal`、`analyzeChatIntentLocal` 等 |
 | `@shiren/api` | REST、`contextPipeline`、legacy `db.ts` |
 | `@shiren/shared` | 类型、prompt、store、厂商 HTTP；改 prompt 常只动这里 |

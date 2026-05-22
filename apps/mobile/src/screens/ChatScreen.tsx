@@ -48,7 +48,6 @@ import { CopyableMessageBubble } from '../components/CopyableMessageBubble';
 import { AssistantComposeDock } from '../components/AssistantComposeDock';
 import { PendingChatImagesStrip } from '../components/PendingChatImagesStrip';
 import { HeaderContextMeter } from '../components/HeaderContextMeter';
-import { LOCAL_FIRST_HIDE_CONTEXT_UI } from '../lib/localFirst';
 import { ChatIntentConfirmBar } from '../components/ChatIntentConfirmBar';
 import { ContextComposerModal } from '../components/ContextComposerModal';
 import { ContextUsageDetailModal } from '../components/ContextUsageDetailModal';
@@ -151,11 +150,6 @@ export function ChatScreen() {
 
   const refreshContextUsage = useCallback(
     async (pending?: string) => {
-      if (LOCAL_FIRST_HIDE_CONTEXT_UI) {
-        setContextUsage(null);
-        setContextUsageLoading(false);
-        return;
-      }
       const sessionId = session?.id;
       if (!sessionId) {
         setContextUsage(null);
@@ -333,10 +327,6 @@ export function ChatScreen() {
   );
 
   const handleCompactContext = useCallback(async () => {
-    if (LOCAL_FIRST_HIDE_CONTEXT_UI) {
-      appAlert('提示', zh.context.localFirstHidden);
-      return;
-    }
     const sessionId = session?.id ?? (await ensureSession());
     setCompactBusy(true);
     try {
@@ -746,8 +736,7 @@ export function ChatScreen() {
   const canReadReply = messages.some((m) => m.role === 'assistant' && m.status === 'done');
 
   const showHeaderContext =
-    !LOCAL_FIRST_HIDE_CONTEXT_UI &&
-    (contextUsage !== null || contextUsageLoading || session !== null);
+    contextUsage !== null || contextUsageLoading || session !== null;
 
   const composeFooter = (
     <View style={[styles.composeWrap, isTablet && styles.composeWrapTablet]}>
@@ -908,17 +897,14 @@ export function ChatScreen() {
         />
       </WritingAssistantSheet>
 
-      {!LOCAL_FIRST_HIDE_CONTEXT_UI ? (
-        <ContextUsageDetailModal
-          visible={contextDetailUsage != null}
-          usage={contextDetailUsage}
-          onClose={() => setContextDetailUsage(null)}
-          onCompact={() => void handleCompactContext()}
-          compactBusy={compactBusy}
-        />
-      ) : null}
+      <ContextUsageDetailModal
+        visible={contextDetailUsage != null}
+        usage={contextDetailUsage}
+        onClose={() => setContextDetailUsage(null)}
+        onCompact={() => void handleCompactContext()}
+        compactBusy={compactBusy}
+      />
 
-      {!LOCAL_FIRST_HIDE_CONTEXT_UI ? (
       <ContextComposerModal
         visible={composerOpen}
         source="chat"
@@ -931,7 +917,6 @@ export function ChatScreen() {
           void refreshContextUsage(input);
         }}
       />
-      ) : null}
     </KeyboardAvoidingView>
   );
 }

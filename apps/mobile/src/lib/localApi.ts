@@ -13,12 +13,35 @@ import type { LocalStore } from '@shiren/shared';
 import {
   analyzeChatIntentLocal,
   analyzeWritingIntentLocal,
-  generateChatReply,
-  generateRevisionSnapshotLocal,
-  generateWritingChatReplyLocal,
+  compactChatSession as compactChatSessionEngine,
+  completeChatMessages,
+  prepareChatContext,
+  prepareWritingChatContext,
+  prepareWritingIntentContext,
+  previewChatContextPreview,
+  previewChatContextUsage,
+  previewWritingIntentContextPreview,
+  previewWritingIntentContextUsage,
+  runWritingExecute,
+  runWritingExecuteRetry,
+  summarizeChatSessionTitleLocal,
+  type ContextStoreAdapter,
 } from '@shiren/engine';
-import { stripWritingIntentDisplayText } from '@shiren/shared';
+import {
+  stripWritingIntentDisplayText,
+  buildWritingAssistantContextBlocks,
+  assistantWelcomeLine,
+  assistantRevisionReadyLine,
+  CHAT_MAX_IMAGES_PER_MESSAGE,
+  chatImageTurnLlmNotice,
+  chatPendingUserForContext,
+  chatStoredUserContent,
+  ZenMuxError,
+  zenmuxChatWithImages,
+  type ZenMuxChatImage,
+} from '@shiren/shared';
 import { DEEPSEEK_MODEL_PRO } from '@shiren/shared';
+import { getZenMuxApiKey } from './zenmuxKey';
 import { createDeepSeekModelClient, LocalModelError, verifyDeepSeekKeyDirect } from './localModelClient';
 import { getDeepSeekApiKey } from './deepseekKey';
 import { getStoredDialect } from './tts';
@@ -40,8 +63,27 @@ function ok<T>(data: T): ApiResult<T> {
 
 type WritingIntentApiData = WritingIntentAnalyzeResult & { contextUsage: ContextUsage };
 
-function okWritingIntent(data: WritingIntentAnalyzeResult): ApiResult<WritingIntentApiData> {
-  return ok({ ...data, contextUsage: emptyContextUsage });
+function okWritingIntent(
+  data: WritingIntentAnalyzeResult,
+  contextUsage?: ContextUsage,
+): ApiResult<WritingIntentApiData> {
+  return ok({ ...data, contextUsage: contextUsage ?? emptyContextUsage });
+}
+
+function parseChatImages(raw: unknown): ZenMuxChatImage[] {
+  if (!Array.isArray(raw)) return [];
+  const images: ZenMuxChatImage[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const b64 = (item as { imageBase64?: string }).imageBase64?.trim();
+    if (!b64 || b64.length < 32 || b64.length > 12_000_000) continue;
+    images.push({
+      imageBase64: b64,
+      mimeType: (item as { mimeType?: string }).mimeType,
+    });
+    if (images.length >= CHAT_MAX_IMAGES_PER_MESSAGE) break;
+  }
+  return images;
 }
 
 function requireStore(store: LocalStore | null): LocalStore {
@@ -97,6 +139,26 @@ export function createLocalApi(deps: {
 }) {
   function store() {
     return requireStore(deps.getStore());
+  }
+
+  function contextStoreAdapter(): ContextStoreAdapter {
+    const s = store();
+    return {
+      getChatSession: (id) => s.getChatSession(id),
+      getChatMessages: (id) => s.getChatMessages(id),
+      updateChatSessionContext: (sessionId, summary, upToMessageId) => {
+        const updated = s.updateChatSessionContext(sessionId, summary, upToMessageId);
+        if (updated) deps.markChanged();
+        return updated;
+      },
+      getDocument: (id) => s.getDocument(id),
+      getWritingAssistantMessages: (id) => s.getWritingAssistantMessages(id),
+      updateDocumentContextFields: (documentId, fields) => {
+        const updated = s.updateDocumentContextFields(documentId, fields);
+        if (updated) deps.markChanged();
+        return updated;
+      },
+    };
   }
 
   return {
@@ -175,8 +237,12 @@ export function createLocalApi(deps: {
 
     getChatMessages: async (sessionId: string) => ok(store().getChatMessages(sessionId)),
 
-    getWritingAssistantMessages: async (documentId: string) =>
-      ok(store().getWritingAssistantMessages(documentId)),
+    getWritingAssistantMessages: async (documentId: string) => {
+      const dialect = await getStoredDialect();
+      store().ensureWritingAssistantWelcome(documentId, assistantWelcomeLine(dialect));
+      deps.markChanged();
+      return ok(store().getWritingAssistantMessages(documentId));
+    },
 
     analyzeChatIntent: async (
       sessionId: string,
@@ -201,53 +267,161 @@ export function createLocalApi(deps: {
       sessionId: string,
       body: { content: string; images?: unknown[]; contextSelection?: ContextSelection },
     ) => {
-      if (body.images && body.images.length > 0) {
-        const err = new Error('带图片的问问题需要配置识图密钥') as Error & { code?: string };
-        err.code = 'ZENMUX_KEY_MISSING';
-        throw err;
-      }
+      const text = body.content?.trim() ?? '';
+      const images = parseChatImages(body.images);
+      if (!text && images.length === 0) notFound('VALIDATION');
+
+      const imageOnlyFallback = '请根据我上传的图片回答';
+      const storedContent = chatStoredUserContent({
+        text,
+        imageCount: images.length,
+        imageOnlyFallback,
+      });
+      const pendingForContext = chatPendingUserForContext(text, images.length);
+
+      if (!store().getChatSession(sessionId)) notFound('CHAT_SESSION_NOT_FOUND');
+
       try {
-        const sessions = store().listChatSessions();
-        const session = sessions.find((s) => s.id === sessionId);
-        if (!session) notFound('CHAT_SESSION_NOT_FOUND');
-        const user = store().addChatMessage(sessionId, 'user', body.content);
-        if (!user) notFound('CHAT_SESSION_NOT_FOUND');
-        const replyText = await generateChatReply(await model(), {
-          session: session!,
-          history: store().getChatMessages(sessionId),
-          userText: body.content,
+        const dialect = await getStoredDialect();
+        const m = await model();
+        const ctxStore = contextStoreAdapter();
+        const prepared = await prepareChatContext({
+          store: ctxStore,
+          model: m,
+          sessionId,
+          pendingUser: pendingForContext,
+          dialect,
+          contextSelection: body.contextSelection,
         });
-        const assistant = store().addChatMessage(sessionId, 'assistant', replyText);
+
+        let reply: string;
+        if (images.length > 0) {
+          const zenmuxKey = await getZenMuxApiKey();
+          if (!zenmuxKey) {
+            const err = new Error('带图片的问问题需要先在设置里填写识图密钥') as Error & {
+              code?: string;
+            };
+            err.code = 'ZENMUX_KEY_MISSING';
+            throw err;
+          }
+          try {
+            reply = await zenmuxChatWithImages({
+              apiKey: zenmuxKey,
+              messages: prepared.messages.map((msg) => ({
+                role: msg.role,
+                content: msg.content,
+              })),
+              images,
+              imageNotice: chatImageTurnLlmNotice(images.length),
+            });
+          } catch (e) {
+            if (e instanceof ZenMuxError) {
+              const err = new Error(e.message) as Error & { code?: string };
+              err.code = 'ZENMUX_KEY_MISSING';
+              throw err;
+            }
+            throw e;
+          }
+        } else {
+          reply = await completeChatMessages(m, prepared.messages);
+        }
+
+        const user = store().addChatMessage(sessionId, 'user', storedContent);
+        if (!user) notFound('CHAT_SESSION_NOT_FOUND');
+        const assistant = store().addChatMessage(sessionId, 'assistant', reply);
         if (!assistant) notFound('CHAT_SESSION_NOT_FOUND');
+
+        let sessionOut = prepared.session;
+        try {
+          const title = await summarizeChatSessionTitleLocal(m, {
+            messages: store().getChatMessages(sessionId).map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+            })),
+            lastUserMessage: storedContent,
+            dialect,
+          });
+          sessionOut = store().updateChatSessionTitle(sessionId, title) ?? sessionOut;
+        } catch {
+          const fallback = storedContent.replace(/\s+/g, ' ').slice(0, 28);
+          if (fallback) {
+            sessionOut = store().updateChatSessionTitle(sessionId, fallback) ?? sessionOut;
+          }
+        }
+
         deps.markChanged();
         return ok({
           user,
           assistant,
-          session: store().getChatSession(sessionId),
-          contextUsage: emptyContextUsage,
+          session: sessionOut,
+          contextUsage: prepared.usage,
         });
       } catch (e) {
         rethrowAsApiError(e);
       }
     },
 
-    getChatContextUsage: async () => ok(emptyContextUsage),
+    getChatContextUsage: async (
+      sessionId: string,
+      params?: { pending?: string; contextSelection?: ContextSelection },
+    ) => {
+      if (!store().getChatSession(sessionId)) notFound('CHAT_SESSION_NOT_FOUND');
+      try {
+        const dialect = await getStoredDialect();
+        const usage = await previewChatContextUsage({
+          store: contextStoreAdapter(),
+          sessionId,
+          pendingUser: params?.pending,
+          dialect,
+          contextSelection: params?.contextSelection,
+        });
+        return ok(usage);
+      } catch (e) {
+        rethrowAsApiError(e);
+      }
+    },
 
-    getChatContextPreview: async () => ok(emptyContextPreview),
+    getChatContextPreview: async (
+      sessionId: string,
+      params?: { pending?: string; contextSelection?: ContextSelection },
+    ) => {
+      if (!store().getChatSession(sessionId)) notFound('CHAT_SESSION_NOT_FOUND');
+      try {
+        const dialect = await getStoredDialect();
+        const preview = await previewChatContextPreview({
+          store: contextStoreAdapter(),
+          sessionId,
+          pendingUser: params?.pending,
+          dialect,
+          contextSelection: params?.contextSelection,
+        });
+        return ok(preview);
+      } catch (e) {
+        rethrowAsApiError(e);
+      }
+    },
 
     compactChatSession: async (sessionId: string) => {
-      const assistant = store().addChatMessage(
-        sessionId,
-        'assistant',
-        '已为您整理上下文，可以继续提问。',
-      );
-      if (!assistant) notFound('CHAT_SESSION_NOT_FOUND');
-      deps.markChanged();
-      return ok({
-        confirmation: '已压缩',
-        assistantMessage: assistant,
-        contextUsage: emptyContextUsage,
-      });
+      if (!store().getChatSession(sessionId)) notFound('CHAT_SESSION_NOT_FOUND');
+      try {
+        const dialect = await getStoredDialect();
+        const { confirmation, usage } = await compactChatSessionEngine({
+          store: contextStoreAdapter(),
+          model: await model(),
+          sessionId,
+          dialect,
+        });
+        const assistant = store().addChatMessage(sessionId, 'assistant', confirmation);
+        if (!assistant) notFound('CHAT_SESSION_NOT_FOUND');
+        deps.markChanged();
+        return ok({
+          confirmation,
+          assistantMessage: assistant,
+          contextUsage: usage,
+        });
+      } catch (e) {
+        rethrowAsApiError(e);
+      }
     },
 
     analyzeWritingAssistantIntent: async (
@@ -297,29 +471,49 @@ export function createLocalApi(deps: {
         const m = await model();
 
         if (payload.directChat) {
-          const chatReply = await generateWritingChatReplyLocal(m, {
-            content: payload.content,
-            chapterTitle: payload.chapterTitle,
-            chapterContent: payload.chapterContent,
-            documentExcerpt: payload.documentExcerpt,
-            history,
-            dialect,
-          });
-          const { user, assistant } = persistChatExchange(chatReply);
+          const doc = store().getDocument(documentId);
+          if (!doc) notFound('DOCUMENT_NOT_FOUND');
           const scope = payload.referenceScope ?? 'document';
-          return okWritingIntent({
-            mode: 'chat',
+          const { chapterBlock, documentBlock } = buildWritingAssistantContextBlocks({
+            chapterTitle: payload.chapterTitle,
+            chapterContent:
+              payload.chapterContent ||
+              payload.articleExcerpt?.trim() ||
+              '（本章尚无正文）',
+            documentExcerpt: payload.documentExcerpt ?? '',
             referenceScope: scope,
-            displayText: chatReply,
-            action: '',
-            instruction: '',
-            ready: true,
-            chatReply,
-            user,
-            assistant,
-            transcript: source === 'voice' ? payload.content : undefined,
-            source,
           });
+          const prepared = await prepareWritingChatContext({
+            store: contextStoreAdapter(),
+            model: m,
+            documentId,
+            document: doc,
+            allMessages: store().getWritingAssistantMessages(documentId),
+            chapterBlock,
+            documentBlock,
+            userMessage: payload.content,
+            dialect,
+            contextSelection: payload.contextSelection,
+            referenceScope: scope,
+          });
+          const chatReply = await completeChatMessages(m, prepared.messages);
+          const { user, assistant } = persistChatExchange(chatReply);
+          return okWritingIntent(
+            {
+              mode: 'chat',
+              referenceScope: scope,
+              displayText: chatReply,
+              action: '',
+              instruction: '',
+              ready: true,
+              chatReply,
+              user,
+              assistant,
+              transcript: source === 'voice' ? payload.content : undefined,
+              source,
+            },
+            prepared.usage,
+          );
         }
 
         const intent = await analyzeWritingIntentLocal(m, {
@@ -361,7 +555,32 @@ export function createLocalApi(deps: {
         };
 
         if (intent.mode === 'revise' && intent.ready) {
-          return okWritingIntent(base);
+          const doc = store().getDocument(documentId);
+          if (!doc) notFound('DOCUMENT_NOT_FOUND');
+          const scope = referenceScope;
+          const { chapterBlock, documentBlock } = buildWritingAssistantContextBlocks({
+            chapterTitle: payload.chapterTitle,
+            chapterContent:
+              payload.chapterContent ||
+              payload.articleExcerpt?.trim() ||
+              '（本章尚无正文）',
+            documentExcerpt: payload.documentExcerpt ?? '',
+            referenceScope: scope,
+          });
+          const prepared = await prepareWritingIntentContext({
+            store: contextStoreAdapter(),
+            model: m,
+            documentId,
+            document: doc,
+            allMessages: store().getWritingAssistantMessages(documentId),
+            chapterBlock,
+            documentBlock,
+            userMessage: payload.content,
+            dialect,
+            contextSelection: payload.contextSelection,
+            referenceScope: scope,
+          });
+          return okWritingIntent(base, prepared.usage);
         }
 
         if (intent.mode === 'revise' && !intent.ready) {
@@ -384,24 +603,45 @@ export function createLocalApi(deps: {
           });
         }
 
-        const chatReply = await generateWritingChatReplyLocal(m, {
-          content: payload.content,
+        const doc = store().getDocument(documentId);
+        if (!doc) notFound('DOCUMENT_NOT_FOUND');
+        const scope = referenceScope;
+        const { chapterBlock, documentBlock } = buildWritingAssistantContextBlocks({
           chapterTitle: payload.chapterTitle,
-          chapterContent: payload.chapterContent,
-          documentExcerpt: payload.documentExcerpt,
-          history,
+          chapterContent:
+            payload.chapterContent ||
+            payload.articleExcerpt?.trim() ||
+            '（本章尚无正文）',
+          documentExcerpt: payload.documentExcerpt ?? '',
+          referenceScope: scope,
+        });
+        const prepared = await prepareWritingChatContext({
+          store: contextStoreAdapter(),
+          model: m,
+          documentId,
+          document: doc,
+          allMessages: store().getWritingAssistantMessages(documentId),
+          chapterBlock,
+          documentBlock,
+          userMessage: payload.content,
           dialect,
+          contextSelection: payload.contextSelection,
+          referenceScope: scope,
         });
+        const chatReply = await completeChatMessages(m, prepared.messages);
         const { user, assistant } = persistChatExchange(chatReply);
-        return okWritingIntent({
-          ...base,
-          mode: 'chat',
-          ready: true,
-          displayText: chatReply,
-          chatReply,
-          user,
-          assistant,
-        });
+        return okWritingIntent(
+          {
+            ...base,
+            mode: 'chat',
+            ready: true,
+            displayText: chatReply,
+            chatReply,
+            user,
+            assistant,
+          },
+          prepared.usage,
+        );
       } catch (e) {
         rethrowAsApiError(e);
       }
@@ -445,7 +685,11 @@ export function createLocalApi(deps: {
         messageId: string;
         approved: boolean;
         blockId: string;
+        articleExcerpt?: string;
+        chapterId?: string;
+        chapterTitle?: string;
         chapterContent: string;
+        documentExcerpt?: string;
         understandingScope: WritingUnderstandingScope;
       },
     ) => {
@@ -472,47 +716,81 @@ export function createLocalApi(deps: {
         notFound('WRITING_ASSISTANT_MESSAGE_NOT_FOUND');
       }
 
+      const doc = store().getDocument(documentId);
+      if (!doc) notFound('DOCUMENT_NOT_FOUND');
+      let found = store().findBlock(documentId, body.blockId);
+      if (!found && body.chapterId) {
+        const chapter = doc.chapters.find((ch) => ch.id === body.chapterId);
+        const block = chapter?.blocks[0];
+        if (chapter && block) found = { chapter, block };
+      }
+      if (!found) notFound('BLOCK_NOT_FOUND');
+
       const action = pending.pendingAction ?? '润色';
       const instruction = pending.pendingInstruction ?? pending.content ?? '';
+      const oldText = found.block.content;
+      const understandingScope: WritingUnderstandingScope =
+        body.understandingScope === 'chapter' ? 'chapter' : 'document';
 
       try {
-        const generated = await generateRevisionSnapshotLocal(await model(), {
-          action,
-          instruction,
-          chapterContent: body.chapterContent,
-        });
-        const revision = store().createRevision({
-          documentId,
-          blockId: body.blockId,
-          parentRevisionId: null,
-          snapshot: generated.newText,
-          previousSnapshot: body.chapterContent,
-          summary: generated.comment,
-          source: 'ai',
-          status: 'pending',
-          suggestAction: action,
-          suggestInstruction: instruction,
-        });
+        const dialect = await getStoredDialect();
+        const m = await model();
         store().updateWritingAssistantMessage(documentId, body.messageId, {
           confirmStatus: 'approved',
         });
+
+        const executed = await runWritingExecute({
+          model: m,
+          action,
+          oldText,
+          instruction,
+          styleGuide: doc.styleGuide,
+          dialect,
+          chapterTitle: body.chapterTitle?.trim() || found.chapter.title,
+          understandingScope,
+          documentExcerpt: body.documentExcerpt?.trim(),
+          documentContextSummary: doc.documentContextSummary,
+        });
+
+        const revision = store().createRevision({
+          documentId,
+          blockId: body.blockId,
+          parentRevisionId: found.block.currentRevisionId,
+          snapshot: executed.text,
+          previousSnapshot: oldText,
+          summary:
+            action === '续写'
+              ? `续写了${found.chapter.title}的一段`
+              : `润色了${found.chapter.title}的一段`,
+          source: 'ai',
+          status: 'pending',
+          suggestAction: action,
+          suggestInstruction: instruction || undefined,
+          suggestUnderstandingScope: understandingScope,
+          suggestEvaluation: executed.basis.evaluation,
+          suggestRationale: executed.basis.rationale,
+        });
+
         const assistant = store().addWritingAssistantMessage({
           documentId,
           role: 'assistant',
-          content: generated.comment,
+          content: assistantRevisionReadyLine(dialect),
           kind: 'revision_ready',
           revisionId: revision.id,
           suggestAction: action,
+          suggestUnderstandingScope: understandingScope,
+          suggestEvaluation: executed.basis.evaluation,
+          suggestRationale: executed.basis.rationale,
         });
         if (!assistant) notFound('DOCUMENT_NOT_FOUND');
         deps.markChanged();
         return ok({
           assistant,
           revision,
-          oldText: body.chapterContent,
-          newText: generated.newText,
-          comment: generated.comment,
-          contextUsage: emptyContextUsage,
+          oldText,
+          newText: executed.text,
+          comment: executed.comment,
+          contextUsage: executed.contextUsage,
         });
       } catch (e) {
         rethrowAsApiError(e);
@@ -523,46 +801,165 @@ export function createLocalApi(deps: {
       documentId: string,
       blockId: string,
       action: string,
-      options?: { instruction?: string },
+      options?: {
+        instruction?: string;
+        retry?: {
+          baseInstruction: string;
+          previousSuggestion: string;
+          additionalFeedback: string;
+          priorFeedback?: string[];
+        };
+      },
     ) => {
       const doc = store().getDocument(documentId);
       if (!doc) notFound('DOCUMENT_NOT_FOUND');
       const found = store().findBlock(documentId, blockId);
       if (!found) notFound('BLOCK_NOT_FOUND');
-      const chapterContent = found.block.content;
+      const oldText = found.block.content;
+
       try {
-        const generated = await generateRevisionSnapshotLocal(await model(), {
-          action,
-          instruction: options?.instruction ?? action,
-          chapterContent,
-        });
+        const dialect = await getStoredDialect();
+        const m = await model();
+        let text: string;
+        let comment: string;
+        let basis: import('@shiren/shared').WritingExecuteBasis;
+
+        if (options?.retry) {
+          const feedback = options.retry.additionalFeedback?.trim();
+          if (!feedback) notFound('VALIDATION');
+          const result = await runWritingExecuteRetry({
+            model: m,
+            action,
+            oldText,
+            baseInstruction: options.retry.baseInstruction ?? '',
+            previousSuggestion: options.retry.previousSuggestion,
+            additionalFeedback: feedback,
+            priorFeedback: options.retry.priorFeedback,
+            styleGuide: doc.styleGuide,
+            dialect,
+          });
+          text = result.text;
+          comment = result.comment;
+          basis = result.basis;
+        } else {
+          const executed = await runWritingExecute({
+            model: m,
+            action,
+            oldText,
+            instruction: options?.instruction,
+            styleGuide: doc.styleGuide,
+            dialect,
+            chapterTitle: found.chapter.title,
+          });
+          text = executed.text;
+          comment = executed.comment;
+          basis = executed.basis;
+        }
+
+        const suggestInstruction = options?.retry
+          ? [options.retry.baseInstruction?.trim(), options.retry.additionalFeedback?.trim()]
+              .filter(Boolean)
+              .join('\n')
+          : options?.instruction?.trim();
+
         const revision = store().createRevision({
           documentId,
           blockId,
-          parentRevisionId: null,
-          snapshot: generated.newText,
-          previousSnapshot: chapterContent,
-          summary: generated.comment,
+          parentRevisionId: found.block.currentRevisionId,
+          snapshot: text,
+          previousSnapshot: oldText,
+          summary:
+            action === '续写'
+              ? `续写了${found.chapter.title}的一段`
+              : `润色了${found.chapter.title}的一段`,
           source: 'ai',
           status: 'pending',
           suggestAction: action,
-          suggestInstruction: options?.instruction,
+          suggestInstruction: suggestInstruction || undefined,
+          suggestEvaluation: basis.evaluation,
+          suggestRationale: basis.rationale,
         });
         deps.markChanged();
         return ok({
           revision,
-          oldText: chapterContent,
-          newText: generated.newText,
-          comment: generated.comment,
+          oldText,
+          newText: text,
+          comment,
         });
       } catch (e) {
         rethrowAsApiError(e);
       }
     },
 
-    getWritingAssistantContextUsage: async () => ok(emptyContextUsage),
+    getWritingAssistantContextUsage: async (
+      documentId: string,
+      params: {
+        chapterTitle: string;
+        chapterContent: string;
+        documentExcerpt: string;
+        pending?: string;
+        contextSelection?: ContextSelection;
+      },
+    ) => {
+      const doc = store().getDocument(documentId);
+      if (!doc) notFound('DOCUMENT_NOT_FOUND');
+      try {
+        const dialect = await getStoredDialect();
+        const { chapterBlock, documentBlock } = buildWritingAssistantContextBlocks({
+          chapterTitle: params.chapterTitle,
+          chapterContent: params.chapterContent || '（本章尚无正文）',
+          documentExcerpt: params.documentExcerpt,
+          referenceScope: 'document',
+        });
+        const usage = await previewWritingIntentContextUsage({
+          document: doc,
+          allMessages: store().getWritingAssistantMessages(documentId),
+          chapterBlock,
+          documentBlock,
+          pendingUser: params.pending,
+          dialect,
+          contextSelection: params.contextSelection,
+        });
+        return ok(usage);
+      } catch (e) {
+        rethrowAsApiError(e);
+      }
+    },
 
-    getWritingContextPreview: async () => ok(emptyContextPreview),
+    getWritingContextPreview: async (
+      documentId: string,
+      params: {
+        chapterTitle: string;
+        chapterContent: string;
+        documentExcerpt: string;
+        pending?: string;
+        contextSelection?: ContextSelection;
+      },
+    ) => {
+      const doc = store().getDocument(documentId);
+      if (!doc) notFound('DOCUMENT_NOT_FOUND');
+      try {
+        const dialect = await getStoredDialect();
+        const { chapterBlock, documentBlock } = buildWritingAssistantContextBlocks({
+          chapterTitle: params.chapterTitle,
+          chapterContent: params.chapterContent || '（本章尚无正文）',
+          documentExcerpt: params.documentExcerpt,
+          referenceScope: 'document',
+        });
+        const preview = await previewWritingIntentContextPreview({
+          document: doc,
+          allMessages: store().getWritingAssistantMessages(documentId),
+          chapterBlock,
+          documentBlock,
+          pendingUser: params.pending,
+          dialect,
+          contextSelection: params.contextSelection,
+        });
+        return ok(preview);
+      } catch (e) {
+        rethrowAsApiError(e);
+      }
+    },
 
     getDeepSeekStatus: async () => {
       const key = await getDeepSeekApiKey();

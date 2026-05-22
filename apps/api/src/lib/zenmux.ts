@@ -2,14 +2,15 @@ import {
   asrPromptForDialect,
   ZenMuxError,
   zenmuxOcr,
+  zenmuxChatWithImages,
   verifyZenMuxKey,
   ZENMUX_BASE_URL,
-  ZENMUX_MODEL_CHAT_IMAGES,
   ZENMUX_MODEL_FLASH_LITE,
   type ReplyDialect,
+  type ZenMuxChatImage,
 } from '@shiren/shared';
 
-export { ZenMuxError, zenmuxOcr, verifyZenMuxKey };
+export { ZenMuxError, zenmuxOcr, verifyZenMuxKey, zenmuxChatWithImages, type ZenMuxChatImage };
 
 type ZenMuxTextPart = { type: 'text'; text: string };
 type ZenMuxImagePart = { type: 'image_url'; image_url: { url: string } };
@@ -23,8 +24,6 @@ type ZenMuxMessage = {
   role: 'user' | 'assistant' | 'system';
   content: string | ZenMuxContentPart[];
 };
-
-export type ZenMuxChatImage = { imageBase64: string; mimeType?: string };
 
 async function zenmuxChat(
   apiKey: string,
@@ -71,49 +70,6 @@ export function getZenMuxKeyFromRequest(headerKey?: string | null): string {
 
 export function hasZenMuxKeyConfigured(headerKey?: string | null): boolean {
   return Boolean(headerKey?.trim() || process.env.ZENMUX_API_KEY?.trim());
-}
-
-function imageDataUrl(imageBase64: string, mimeType?: string): string {
-  const mime = mimeType?.trim() || 'image/jpeg';
-  return `data:${mime};base64,${imageBase64.replace(/\s/g, '')}`;
-}
-
-/** 问答带图：在最后一轮用户话上附加图片（历史均为纯文本） */
-export async function zenmuxChatWithImages(params: {
-  apiKey: string;
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
-  images: ZenMuxChatImage[];
-  imageNotice: string;
-}): Promise<string> {
-  if (params.messages.length === 0) {
-    throw new ZenMuxError('消息为空');
-  }
-  const last = params.messages[params.messages.length - 1];
-  if (last.role !== 'user') {
-    throw new ZenMuxError('最后一轮须为用户消息');
-  }
-
-  const userText = [params.imageNotice.trim(), last.content.trim()].filter(Boolean).join('\n\n');
-  const imageParts: ZenMuxImagePart[] = params.images.map((img) => ({
-    type: 'image_url',
-    image_url: { url: imageDataUrl(img.imageBase64, img.mimeType) },
-  }));
-
-  const zenmuxMessages: ZenMuxMessage[] = params.messages.slice(0, -1).map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
-
-  zenmuxMessages.push({
-    role: 'user',
-    content: [{ type: 'text', text: userText }, ...imageParts],
-  });
-
-  return zenmuxChat(params.apiKey, zenmuxMessages, {
-    model: ZENMUX_MODEL_CHAT_IMAGES,
-    maxTokens: 4096,
-    temperature: 0.5,
-  });
 }
 
 function normalizeAudioFormat(format: string): string {

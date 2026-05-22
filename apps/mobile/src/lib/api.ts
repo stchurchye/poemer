@@ -110,26 +110,26 @@ export const api = {
   ) => local().confirmWritingAssistant(documentId, body),
 
   getWritingAssistantContextUsage: (
-    _documentId: string,
-    _params: {
+    documentId: string,
+    params: {
       chapterTitle: string;
       chapterContent: string;
       documentExcerpt: string;
       pending?: string;
       contextSelection?: import('@shiren/shared').ContextSelection;
     },
-  ) => local().getWritingAssistantContextUsage(),
+  ) => local().getWritingAssistantContextUsage(documentId, params),
 
   getWritingContextPreview: (
-    _documentId: string,
-    _params: {
+    documentId: string,
+    params: {
       chapterTitle: string;
       chapterContent: string;
       documentExcerpt: string;
       pending?: string;
       contextSelection?: import('@shiren/shared').ContextSelection;
     },
-  ) => local().getWritingContextPreview(),
+  ) => local().getWritingContextPreview(documentId, params),
 
   listChatSessions: () => local().listChatSessions(),
 
@@ -138,14 +138,14 @@ export const api = {
   getChatMessages: (sessionId: string) => local().getChatMessages(sessionId),
 
   getChatContextUsage: (
-    _sessionId: string,
-    _params?: { pending?: string; contextSelection?: import('@shiren/shared').ContextSelection },
-  ) => local().getChatContextUsage(),
+    sessionId: string,
+    params?: { pending?: string; contextSelection?: import('@shiren/shared').ContextSelection },
+  ) => local().getChatContextUsage(sessionId, params),
 
   getChatContextPreview: (
-    _sessionId: string,
-    _params?: { pending?: string; contextSelection?: import('@shiren/shared').ContextSelection },
-  ) => local().getChatContextPreview(),
+    sessionId: string,
+    params?: { pending?: string; contextSelection?: import('@shiren/shared').ContextSelection },
+  ) => local().getChatContextPreview(sessionId, params),
 
   compactChatSession: (sessionId: string) => local().compactChatSession(sessionId),
 
