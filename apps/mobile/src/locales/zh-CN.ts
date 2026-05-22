@@ -46,6 +46,11 @@ export const zh = {
     sharePermissionDenied: '需要允许访问相册，才能保存长图',
     viewSuggestion: '看一看',
     pendingSuggestionHint: '小助手改好了，请您看一看再决定要不要用上',
+    /** 改稿建议就绪：仅 TTS 朗读 */
+    revisionReadySpeakIntroZh: '改稿建议准备好啦',
+    revisionReadySpeakIntroYue: '改稿建议准备好喇',
+    revisionReadySpeakTailZh: '点击看一看进行修改查看详细情况',
+    revisionReadySpeakTailYue: '点击看一看进行修改查看详细情况',
     export: '导出',
     continue: '续写',
     polish: '润色',

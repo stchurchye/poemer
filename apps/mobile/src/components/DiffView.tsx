@@ -58,7 +58,8 @@ export function DiffView({
   embedded,
 }: Props) {
   const bodySize = bodyFontSize ?? typography.body;
-  const lineHeight = bodyLineHeight ?? typography.bodyLineHeight;
+  const lineHeight =
+    bodyLineHeight ?? Math.round(bodySize * 1.22);
   const legendSize = embedded ? bodySize - 2 : compact ? typography.caption : typography.button;
   const renderSegments = useMemo(
     () => coalesceSegmentsForRender(segments),
@@ -135,7 +136,7 @@ const styles = StyleSheet.create({
   wrap: { gap: 20 },
   wrapCompact: { gap: 10 },
   wrapEmbedded: { gap: 8 },
-  legendCompact: { color: colors.textMuted, lineHeight: typography.bodyLineHeight },
+  legendCompact: { color: colors.textMuted },
   legendEmbedded: { color: colors.textMuted, marginBottom: 4 },
   legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   legendChip: {

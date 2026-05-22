@@ -6,6 +6,9 @@ export const FONT_SIZE_PRESETS: FontSizePreset[] = ['small', 'medium', 'large', 
 
 export const DEFAULT_FONT_SIZE_PRESET: FontSizePreset = 'large';
 
+/** 小助手回复、看一看改稿区等正文的行高倍率（与 replyLineHeight 一致） */
+export const REPLY_LINE_HEIGHT_RATIO = 1.22;
+
 export type FontMetrics = {
   titleFontSize: number;
   bodyFontSize: number;
@@ -41,8 +44,7 @@ function metricsFromRow(row: FontPresetRow): FontMetrics {
     titleFontSize: row.title,
     bodyFontSize,
     bodyLineHeight,
-    /** 小助手 / 问答回复：行距略紧，避免字高与行距接近 1:1 显得挤 */
-    replyLineHeight: Math.round(bodyFontSize * 1.22),
+    replyLineHeight: Math.round(bodyFontSize * REPLY_LINE_HEIGHT_RATIO),
     captionFontSize: row.caption,
     buttonFontSize: row.button,
     smallFontSize: row.small,

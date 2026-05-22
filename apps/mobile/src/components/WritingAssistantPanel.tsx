@@ -25,6 +25,7 @@ import {
   getAssistantIntentAnalyzingLine,
   getAssistantThinkingLine,
   getAssistantThinkingLongLine,
+  buildWritingRevisionReadySpeakText,
 } from '../lib/assistantCopy';
 import {
   announceAssistantReplySync,
@@ -906,7 +907,23 @@ export function WritingAssistantPanel({
       }
 
       if (revisionReadyMsg?.content.trim()) {
-        await announceAssistantReplySync(revisionReadyMsg.content);
+        const readyBasis = revisionBasisFromFields({
+          suggestEvaluation:
+            revisionReadyMsg.suggestEvaluation ?? res.data.revision?.suggestEvaluation,
+          suggestRationale:
+            revisionReadyMsg.suggestRationale ?? res.data.revision?.suggestRationale,
+          suggestAction: revisionReadyMsg.suggestAction ?? res.data.revision?.suggestAction,
+          suggestUnderstandingScope:
+            revisionReadyMsg.suggestUnderstandingScope ??
+            res.data.revision?.suggestUnderstandingScope,
+        });
+        const revisionSpeak = await buildWritingRevisionReadySpeakText(
+          revisionReadyMsg.content,
+          readyBasis,
+        );
+        if (revisionSpeak) {
+          await announceAssistantReplySync(revisionSpeak);
+        }
         await revealMessage(revisionReadyMsg.id, revisionReadyMsg.content);
       }
 
@@ -1292,8 +1309,8 @@ export function WritingAssistantPanel({
               {showRevisionBasis ? (
                 <RevisionBasisBlock
                   basis={revisionBasis}
-                  bodyFontSize={captionFontSize}
-                  bodyLineHeight={bodyLineHeight}
+                  bodyFontSize={bodyFontSize}
+                  bodyLineHeight={replyLineHeight}
                 />
               ) : null}
               <Pressable

@@ -1,4 +1,5 @@
 import { zh } from '../locales/zh-CN';
+import type { RevisionBasisDisplay } from './revisionBasis';
 import { getStoredDialect } from './tts';
 
 function isCantonese(): Promise<boolean> {
@@ -41,6 +42,26 @@ export async function buildChatIntentConfirmSpeakText(displayText: string): Prom
   const prefix = await getChatIntentUnderstandSpeakPrefix();
   const hint = await getChatIntentConfirmActionHint();
   return `${prefix}${trimmed}。${hint}`;
+}
+
+/** 写作改稿建议就绪：完整朗读稿（开场 + 正文 + 依据 + 操作提示，仅 TTS） */
+export async function buildWritingRevisionReadySpeakText(
+  messageContent: string,
+  basis: RevisionBasisDisplay | null,
+): Promise<string> {
+  const intro = (await isCantonese())
+    ? zh.writing.revisionReadySpeakIntroYue
+    : zh.writing.revisionReadySpeakIntroZh;
+  const tail = (await isCantonese())
+    ? zh.writing.revisionReadySpeakTailYue
+    : zh.writing.revisionReadySpeakTailZh;
+  const parts: string[] = [intro];
+  const main = messageContent.trim();
+  if (main) parts.push(main);
+  if (basis?.evaluation?.trim()) parts.push(basis.evaluation.trim());
+  if (basis?.rationale?.trim()) parts.push(basis.rationale.trim());
+  parts.push(tail);
+  return parts.join('。');
 }
 
 /** 用户确认改稿后的等待话术（普通话 / 粤语） */

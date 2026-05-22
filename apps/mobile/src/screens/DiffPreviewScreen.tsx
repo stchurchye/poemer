@@ -21,6 +21,7 @@ import { DiffView } from '../components/DiffView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { TabletFrame } from '../components/TabletFrame';
 import { colors, typography } from '../theme/colors';
+import { REPLY_LINE_HEIGHT_RATIO } from '../theme/fontPresets';
 import { useLayout, useTypography } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 import type { WritingStackParamList } from '../navigation/types';
@@ -307,15 +308,15 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
   );
 
   const pageTitle = comment?.trim() || zh.diff.title;
-  /** 增删对比、建议正文：同一套正文字号 */
+  /** 增删对比、建议正文：与对话区回复行距一致，避免首行过高 */
   const contentFontSize = bodyFontSize;
-  const contentLineHeight = bodyLineHeight;
+  const contentLineHeight = Math.round(bodyFontSize * REPLY_LINE_HEIGHT_RATIO);
   /** 两个模块标题（增删对比 / 建议正文） */
   const panelLabelSize = buttonFontSize;
-  const panelLabelLineHeight = Math.round(buttonFontSize * 1.45);
+  const panelLabelLineHeight = Math.round(buttonFontSize * REPLY_LINE_HEIGHT_RATIO);
   /** 页顶题目 */
   const pageTitleSize = isTablet ? 42 : 38;
-  const pageTitleLineHeight = isTablet ? 58 : 52;
+  const pageTitleLineHeight = Math.round(pageTitleSize * REPLY_LINE_HEIGHT_RATIO);
   const goWriting = useCallback(() => {
     leaveDiffPreview(navigation, documentId);
   }, [navigation, documentId]);
