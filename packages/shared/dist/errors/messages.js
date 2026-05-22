@@ -41,22 +41,22 @@ export const errorMessages = {
     },
     NOT_FOUND: {
         message: '呢篇文開唔到',
-        hint: '若果之前喺寫作頁收埋咗，去「設定」最底「已隱藏嘅文章」可以搵返；唔係收埋，就可能刪咗或者服務重開過',
+        hint: '若果之前喺寫作頁收埋咗，去「設定」最底「已隱藏嘅文章」可以搵返；唔係收埋，就可能刪咗咗',
         retryable: false,
     },
     ASSISTANT_INTENT_NOT_FOUND: {
         message: '搵唔到要確認嗰句說話',
-        hint: '可能你已經撳過確認，或者小助手記錄同伺服器對唔上。請關閉小助手再開一次，重新講你想點改',
+        hint: '可能你已經撳過確認，或者小助手記錄對唔上。請關閉小助手再開一次，重新講你想點改',
         retryable: true,
     },
     BLOCK_NOT_FOUND: {
-        message: '呢章正文對唔上伺服器',
-        hint: '請返回寫作頁等一等再試；若仍唔得，關掉 App 再開，或者確認手機連緊同一台電腦嘅 API',
+        message: '呢章正文對唔上',
+        hint: '請返回寫作頁等一等再試；若仍唔得，請完全退出 App 再開',
         retryable: true,
     },
     REVISION_NOT_FOUND: {
         message: '这份改稿建议找不到了',
-        hint: '可能服务刚重启过，请回到写作页让小助手再改一版',
+        hint: '请回到写作页让小助手再改一版',
         retryable: false,
     },
     REVISION_EXPIRED: {

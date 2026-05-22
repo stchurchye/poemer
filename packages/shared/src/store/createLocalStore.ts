@@ -9,6 +9,7 @@ import type {
 } from '../types.js';
 import { formatChapterTitle } from '../document/formatChapterTitle.js';
 import type { PersistedStore } from '../persistedStore.js';
+import { randomId } from '../randomId.js';
 
 type Clock = () => string;
 type IdFactory = () => string;
@@ -52,7 +53,7 @@ export function createLocalStore(
   deps?: { now?: Clock; uuid?: IdFactory },
 ) {
   const now = deps?.now ?? (() => new Date().toISOString());
-  const uuid = deps?.uuid ?? (() => crypto.randomUUID());
+  const uuid = deps?.uuid ?? randomId;
 
   const documents = new Map<string, Document>();
   const revisions = new Map<string, Revision>();

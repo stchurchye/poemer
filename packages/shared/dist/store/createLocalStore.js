@@ -1,4 +1,5 @@
 import { formatChapterTitle } from '../document/formatChapterTitle.js';
+import { randomId } from '../randomId.js';
 const MAX_CHAPTERS = 50;
 function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -29,7 +30,7 @@ export function findBlock(doc, blockId) {
 }
 export function createLocalStore(initial, deps) {
     const now = deps?.now ?? (() => new Date().toISOString());
-    const uuid = deps?.uuid ?? (() => crypto.randomUUID());
+    const uuid = deps?.uuid ?? randomId;
     const documents = new Map();
     const revisions = new Map();
     const chatSessions = new Map();
