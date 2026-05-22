@@ -27,6 +27,7 @@ import {
 } from '../lib/assistantCopy';
 import {
   announceAssistantReplyParallel,
+  announceAssistantReplySync,
   announceAssistantWaiting,
   cancelAssistantFeedback,
 } from '../lib/assistantFeedback';
@@ -407,9 +408,9 @@ export function ChatScreen() {
           contextSelection: contextSelection ?? undefined,
         });
         const fullText = res.data.assistant?.content ?? '';
-        if (fullText.trim()) {
-          announceAssistantReplyParallel(fullText);
-        }
+        const ttsReady = fullText.trim()
+          ? announceAssistantReplySync(fullText)
+          : Promise.resolve();
         setMessages((prev) => {
           const rest = prev.filter((m) => m.id !== userId && m.id !== assistantId);
           return [
@@ -418,11 +419,25 @@ export function ChatScreen() {
             {
               ...res.data.assistant!,
               id: assistantId,
-              status: 'streaming' as const,
+              status: 'pending' as const,
               content: fullText,
-              displayContent: '',
+              displayContent: thinkingLine,
             },
           ];
+        });
+        await ttsReady;
+        setMessages((prev) => {
+          const rest = prev.filter((m) => m.id !== userId);
+          return rest.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  status: 'streaming' as const,
+                  content: fullText,
+                  displayContent: '',
+                }
+              : m,
+          );
         });
         await revealAssistant(assistantId, fullText);
         const serverAssistant = res.data.assistant!;

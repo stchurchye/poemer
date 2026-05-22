@@ -27,7 +27,7 @@ import {
   getAssistantThinkingLongLine,
 } from '../lib/assistantCopy';
 import {
-  announceAssistantReplyParallel,
+  announceAssistantReplySync,
   announceAssistantSpeak,
   announceAssistantWaiting,
   cancelAssistantFeedback,
@@ -550,7 +550,7 @@ export function WritingAssistantPanel({
             next.push({
               ...serverAssistant,
               id: assistantId,
-              status: 'streaming',
+              status: 'pending',
               content: fullText,
               displayContent: '',
             });
@@ -558,7 +558,7 @@ export function WritingAssistantPanel({
             next.push(
               localMessage(documentId, 'assistant', fullText, 'chat', {
                 id: assistantId,
-                status: 'streaming',
+                status: 'pending',
                 displayContent: '',
                 content: fullText,
               }),
@@ -567,7 +567,15 @@ export function WritingAssistantPanel({
           return next;
         });
         scrollToEnd();
-        announceAssistantReplyParallel(fullText);
+        const ttsReady = announceAssistantReplySync(fullText);
+        await ttsReady;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, status: 'streaming' as const, displayContent: '' }
+              : m,
+          ),
+        );
         await revealMessage(assistantId, fullText);
         setMessages((prev) =>
           prev.map((m) =>
@@ -895,7 +903,8 @@ export function WritingAssistantPanel({
 
       if (revisionReadyMsg?.content.trim()) {
         await cancelAssistantFeedback();
-        announceAssistantReplyParallel(revisionReadyMsg.content);
+        const ttsReady = announceAssistantReplySync(revisionReadyMsg.content);
+        await ttsReady;
         await revealMessage(revisionReadyMsg.id, revisionReadyMsg.content);
       }
 

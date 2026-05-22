@@ -121,6 +121,58 @@ export function announceAssistantReplyParallel(fullText: string): void {
   })();
 }
 
+/** 回复到达：先合成/起播 TTS，resolve 后再开打字机，使文字与语音同步 */
+export function announceAssistantReplySync(fullText: string): Promise<void> {
+  const trimmed = fullText.trim();
+  if (!trimmed) return Promise.resolve();
+
+  playAssistantReadySound();
+  const gen = bumpGeneration();
+  void stopSpeaking();
+
+  return new Promise<void>((resolve) => {
+    let resolved = false;
+    const doResolve = () => {
+      if (resolved) return;
+      resolved = true;
+      resolve();
+    };
+
+    const timer = setTimeout(doResolve, 5_000);
+
+    void (async () => {
+      if (gen !== speakGeneration) {
+        clearTimeout(timer);
+        doResolve();
+        return;
+      }
+      try {
+        await speakText(trimmed, {
+          onStart: () => {
+            clearTimeout(timer);
+            doResolve();
+          },
+          onDone: () => {
+            clearTimeout(timer);
+            doResolve();
+          },
+          onStopped: () => {
+            clearTimeout(timer);
+            doResolve();
+          },
+          onError: () => {
+            clearTimeout(timer);
+            doResolve();
+          },
+        });
+      } catch {
+        clearTimeout(timer);
+        doResolve();
+      }
+    })();
+  });
+}
+
 export async function cancelAssistantFeedback(): Promise<void> {
   bumpGeneration();
   readySoundPlayGeneration += 1;
