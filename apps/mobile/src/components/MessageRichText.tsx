@@ -84,17 +84,20 @@ export function MessageRichText({
   plainTextStyle,
 }: Props) {
   const textStyles = useTextStyles(channel);
-  const { bodyFontSize, bodyLineHeight, captionFontSize } = useTypography(channel);
+  const { bodyFontSize, bodyLineHeight, replyLineHeight, captionFontSize } =
+    useTypography(channel);
   const baseStyle = variant === 'body' ? textStyles.body : textStyles.reply;
+  const contentLineHeight = variant === 'body' ? bodyLineHeight : replyLineHeight;
 
   const markdownStyles = useMemo(
     () =>
       buildMessageMarkdownStyles({
         bodyFontSize,
-        bodyLineHeight,
+        bodyLineHeight: contentLineHeight,
         captionFontSize,
+        paragraphMarginBottom: variant === 'reply' ? 6 : 10,
       }),
-    [bodyFontSize, bodyLineHeight, captionFontSize],
+    [bodyFontSize, contentLineHeight, captionFontSize, variant],
   );
 
   const rules = useMemo<RenderRules>(

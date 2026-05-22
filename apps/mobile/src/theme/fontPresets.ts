@@ -41,7 +41,8 @@ function metricsFromRow(row: FontPresetRow): FontMetrics {
     titleFontSize: row.title,
     bodyFontSize,
     bodyLineHeight,
-    replyLineHeight: Math.round(bodyFontSize * 1.42),
+    /** 小助手 / 问答回复：行距略紧，避免字高与行距接近 1:1 显得挤 */
+    replyLineHeight: Math.round(bodyFontSize * 1.22),
     captionFontSize: row.caption,
     buttonFontSize: row.button,
     smallFontSize: row.small,

@@ -11,8 +11,9 @@ export function buildMessageMarkdownStyles(params: {
   bodyFontSize: number;
   bodyLineHeight: number;
   captionFontSize: number;
+  paragraphMarginBottom?: number;
 }): Record<string, TextStyle | object> {
-  const { bodyFontSize, bodyLineHeight, captionFontSize } = params;
+  const { bodyFontSize, bodyLineHeight, captionFontSize, paragraphMarginBottom = 10 } = params;
   const codeSize = Math.max(Math.round(bodyFontSize * 0.82), 18);
   const codeLine = Math.round(codeSize * 1.45);
   const headingScale = (ratio: number) => Math.round(bodyFontSize * ratio);
@@ -25,7 +26,7 @@ export function buildMessageMarkdownStyles(params: {
     },
     paragraph: {
       marginTop: 0,
-      marginBottom: 10,
+      marginBottom: paragraphMarginBottom,
     },
     text: {
       color: colors.text,
