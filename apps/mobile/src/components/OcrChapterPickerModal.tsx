@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import { useEffect } from 'react';
+import { Keyboard, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { AppModalShell } from './AppModalShell';
 import { colors } from '../theme/colors';
 import { radius, touch } from '../theme/tokens';
@@ -25,12 +26,19 @@ export function OcrChapterPickerModal({
   const text = useTextStyles();
   const others = chapters.filter((ch) => ch.id !== activeChapterId);
 
+  useEffect(() => {
+    if (visible) {
+      Keyboard.dismiss();
+    }
+  }, [visible]);
+
   return (
     <AppModalShell
       visible={visible}
       title={zh.writing.ocrChapterPickerTitle}
       onClose={onClose}
       cardStyle={styles.card}
+      dismissOnBackdropPress={false}
     >
       <Text style={[styles.hint, text.hint]}>{zh.writing.ocrChapterPickerHint}</Text>
       <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">

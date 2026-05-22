@@ -23,5 +23,16 @@ export declare function zenmuxChatWithImages(params: {
     images: ZenMuxChatImage[];
     imageNotice: string;
 }): Promise<string>;
+/** 多轮纯文本对话（默认 Gemini 3.1 Flash Lite） */
+export declare function zenmuxCompleteMessages(params: {
+    apiKey: string;
+    messages: Array<{
+        role: 'system' | 'user' | 'assistant';
+        content: string;
+    }>;
+    maxTokens?: number;
+    temperature?: number;
+    model?: string;
+}): Promise<string>;
 export declare function verifyZenMuxKey(apiKey: string): Promise<void>;
 //# sourceMappingURL=zenmuxClient.d.ts.map

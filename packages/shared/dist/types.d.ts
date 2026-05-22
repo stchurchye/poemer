@@ -69,6 +69,8 @@ export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     createdAt: string;
+    /** 仅 UI 展示用本地路径，不进入后续 LLM 上下文 */
+    imagePreviewUris?: string[];
 }
 import type { AssistantGuideKey } from './prompts/assistantGuideRegistry.js';
 export type { AssistantGuideKey };

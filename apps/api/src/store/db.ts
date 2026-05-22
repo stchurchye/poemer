@@ -333,6 +333,7 @@ export function addChatMessage(
   sessionId: string,
   role: 'user' | 'assistant',
   content: string,
+  options?: Pick<ChatMessage, 'imagePreviewUris'>,
 ): ChatMessage | undefined {
   const session = chatSessions.get(sessionId);
   if (!session) return undefined;
@@ -342,6 +343,9 @@ export function addChatMessage(
     role,
     content,
     createdAt: now(),
+    ...(options?.imagePreviewUris?.length
+      ? { imagePreviewUris: [...options.imagePreviewUris] }
+      : {}),
   };
   const list = chatMessages.get(sessionId) ?? [];
   list.push(msg);

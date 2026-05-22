@@ -8,7 +8,7 @@ export const CONTEXT_BREAKDOWN_META = [
     { key: 'pendingUser', labelZh: '待发送', color: '#FBBF24' },
     { key: 'outputReserve', labelZh: '输出预留', color: '#6B7280' },
 ];
-export const DEFAULT_CONTEXT_WINDOW_TOKENS = 1_000_000;
+export const DEFAULT_CONTEXT_WINDOW_TOKENS = 300_000;
 export const DEFAULT_OUTPUT_RESERVE_TOKENS = 20_000;
 /** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限 */
 export const COMPACT_SUMMARY_MAX_TOKENS = 100_000;

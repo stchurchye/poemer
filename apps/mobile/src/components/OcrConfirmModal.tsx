@@ -1,6 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { AppTextInput } from './AppTextInput';
 import { AppModalShell } from './AppModalShell';
+import { ModalKeyboardDismissBar } from './ModalKeyboardDismissBar';
 import { colors } from '../theme/colors';
 import { radius, touch } from '../theme/tokens';
 import { useTextStyles } from '../theme/useTextStyles';
@@ -38,7 +39,13 @@ export function OcrConfirmModal({
   );
 
   return (
-    <AppModalShell visible={visible} title={zh.writing.ocrConfirmTitle} onClose={onClose}>
+    <AppModalShell
+      visible={visible}
+      title={zh.writing.ocrConfirmTitle}
+      onClose={onClose}
+      dismissOnBackdropPress={false}
+    >
+      <ModalKeyboardDismissBar />
       <ScrollView
         style={styles.scroll}
         keyboardShouldPersistTaps="handled"

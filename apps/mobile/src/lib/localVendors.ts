@@ -32,7 +32,9 @@ function vendorError(
   }
   if (e instanceof ZenMuxError) {
     if (e.message === 'ZENMUX_KEY_MISSING') {
-      const err = new Error('请先在设置里填写识图密钥') as Error & { code?: string };
+      const err = new Error('请先在设置里填写 ZenMux 密钥（问答、改稿、带图与云端识图）') as Error & {
+        code?: string;
+      };
       err.code = 'ZENMUX_KEY_MISSING';
       throw err;
     }
@@ -105,7 +107,9 @@ export async function ocrImageDirect(body: {
 }): Promise<string> {
   const apiKey = await getZenMuxApiKey();
   if (!apiKey) {
-    const err = new Error('请先在设置里填写识图密钥') as Error & { code?: string };
+    const err = new Error('请先在设置里填写 ZenMux 密钥（问答、改稿、带图与云端识图）') as Error & {
+      code?: string;
+    };
     err.code = 'ZENMUX_KEY_MISSING';
     throw err;
   }
@@ -149,7 +153,7 @@ export async function getZenMuxStatusLocal() {
     configured: Boolean(key),
     source: 'local',
     model: ZENMUX_MODEL_FLASH_LITE,
-    displayName: 'ZenMux · Gemini 2.5 Flash Lite',
+    displayName: 'ZenMux · Gemini 3.1 Flash Lite',
   };
 }
 
@@ -158,7 +162,7 @@ export async function verifyZenMuxKeyLocal(apiKey?: string) {
   if (!key) return { valid: false, message: '请先填入密钥' };
   try {
     await verifyZenMuxKeyRemote(key);
-    return { valid: true, message: '密钥可用，识图已就绪' };
+    return { valid: true, message: '密钥可用，问答、改稿与识图已就绪' };
   } catch (e) {
     const msg = e instanceof ZenMuxError ? e.message : '密钥不可用';
     return { valid: false, message: msg };

@@ -35,7 +35,7 @@ export declare function createLocalStore(initial: PersistedStore, deps?: {
     }) => Document | undefined;
     updateChatSessionTitle: (sessionId: string, title: string) => ChatSession | undefined;
     getChatMessages: (sessionId: string) => ChatMessage[];
-    addChatMessage: (sessionId: string, role: "user" | "assistant", content: string) => ChatMessage | undefined;
+    addChatMessage: (sessionId: string, role: "user" | "assistant", content: string, options?: Pick<ChatMessage, "imagePreviewUris">) => ChatMessage | undefined;
     getWritingAssistantMessages: (documentId: string) => WritingAssistantMessage[];
     addWritingAssistantMessage: (input: Omit<WritingAssistantMessage, "id" | "createdAt">) => WritingAssistantMessage | undefined;
     updateWritingAssistantMessage: (documentId: string, messageId: string, patch: Partial<WritingAssistantMessage>) => WritingAssistantMessage | undefined;

@@ -12,6 +12,8 @@ type Props = {
   variant?: 'center' | 'headerOnly';
   cardStyle?: StyleProp<ViewStyle>;
   closeAccessibilityLabel?: string;
+  /** 默认 true；识图确认等需用 ✕/返回关闭，避免误触遮罩关闭 */
+  dismissOnBackdropPress?: boolean;
 };
 
 /** 统一弹窗：遮罩、标题、关闭按钮 */
@@ -23,6 +25,7 @@ export function AppModalShell({
   variant = 'center',
   cardStyle,
   closeAccessibilityLabel = '关闭',
+  dismissOnBackdropPress = true,
 }: Props) {
   const text = useTextStyles();
 
@@ -58,9 +61,9 @@ export function AppModalShell({
     >
       <Pressable
         style={modalStyles.backdrop}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel={closeAccessibilityLabel}
+        onPress={dismissOnBackdropPress ? onClose : undefined}
+        accessibilityRole={dismissOnBackdropPress ? 'button' : undefined}
+        accessibilityLabel={dismissOnBackdropPress ? closeAccessibilityLabel : undefined}
       >
         <Pressable
           style={[modalStyles.card, modalStyles.cardCentered, cardStyle]}

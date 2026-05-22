@@ -9,4 +9,9 @@ export declare function chatPendingUserForContext(text: string, imageCount: numb
 /** 多模态请求里附在用户话前的说明 */
 export declare function chatImageTurnLlmNotice(imageCount: number): string;
 export declare const CHAT_MAX_IMAGES_PER_MESSAGE = 6;
+/** 用户气泡展示用文字（有预览图时去掉「已上传 N 张」后缀） */
+export declare function chatUserBubbleDisplayText(message: {
+    content: string;
+    imagePreviewUris?: string[];
+}): string;
 //# sourceMappingURL=chatImages.d.ts.map

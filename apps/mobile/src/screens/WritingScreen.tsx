@@ -766,6 +766,7 @@ export function WritingScreen({ navigation, route }: Props) {
       appAlert('提示', zh.writing.ocrConfirmEmpty);
       return;
     }
+    Keyboard.dismiss();
     setOcrConfirmVisible(false);
     setOcrInsertWhereVisible(true);
   };
@@ -1380,6 +1381,7 @@ export function WritingScreen({ navigation, route }: Props) {
         ]}
         onSelect={(key) => {
           if (key === 'chapter') {
+            Keyboard.dismiss();
             setOcrInsertHowVisible(false);
             setOcrChapterPickerVisible(true);
           } else if (key === 'newChapter') {

@@ -73,7 +73,7 @@ EXPO_PUBLIC_API_URL=http://云服务器公网IP:3921
 
 家人手机安装 APK 后：
 
-1. **设置** → 填入 DeepSeek / 识图 / 朗读密钥（与现在一样）
+1. **设置** → 填入 DeepSeek（意图）、ZenMux（问答/改稿/带图/识图）、百炼（朗读听写，可选）
 2. 确保手机能访问 `http://公网IP:3921/health`（浏览器或 curl 测一下）
 
 > 有域名时建议再配 Nginx + HTTPS（见下文可选）。

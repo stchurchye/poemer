@@ -81,6 +81,14 @@ export async function zenmuxChatWithImages(params) {
         temperature: 0.5,
     });
 }
+/** 多轮纯文本对话（默认 Gemini 3.1 Flash Lite） */
+export async function zenmuxCompleteMessages(params) {
+    return zenmuxChat(params.apiKey, params.messages, {
+        maxTokens: params.maxTokens,
+        temperature: params.temperature,
+        model: params.model,
+    });
+}
 export async function verifyZenMuxKey(apiKey) {
     await zenmuxChat(apiKey, [{ role: 'user', content: '请只回复：好的' }], {
         maxTokens: 16,

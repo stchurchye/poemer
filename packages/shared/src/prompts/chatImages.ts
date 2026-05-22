@@ -25,3 +25,17 @@ export function chatImageTurnLlmNotice(imageCount: number): string {
 }
 
 export const CHAT_MAX_IMAGES_PER_MESSAGE = 6;
+
+const CHAT_IMAGE_STORED_SUFFIX_RE = /\n\n（本轮已上传 \d+ 张图片）$/;
+
+/** 用户气泡展示用文字（有预览图时去掉「已上传 N 张」后缀） */
+export function chatUserBubbleDisplayText(message: {
+  content: string;
+  imagePreviewUris?: string[];
+}): string {
+  const hasPreview = (message.imagePreviewUris?.length ?? 0) > 0;
+  const text = hasPreview
+    ? message.content.replace(CHAT_IMAGE_STORED_SUFFIX_RE, '').trim()
+    : message.content.trim();
+  return text;
+}

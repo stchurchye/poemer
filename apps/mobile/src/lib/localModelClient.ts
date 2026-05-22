@@ -19,9 +19,9 @@ export function createDeepSeekModelClient(): ModelClient {
       const key = await getDeepSeekApiKey();
       if (!key) {
         throw new LocalModelError(
-          '请先在设置里填写小助手密钥',
+          '请先在设置里填写 DeepSeek 密钥',
           'MODEL_KEY_MISSING',
-          '文章和聊天记录仍在本机；只有 AI 改稿和问问题需要密钥。',
+          '用于问问题与写作发送前的意图识别；回答与改稿还需 ZenMux 密钥。',
         );
       }
       try {

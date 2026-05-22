@@ -78,13 +78,13 @@ export const errorMessages: Record<ErrorCode, ErrorMessageEntry> = {
     retryable: true,
   },
   API_KEY_MISSING: {
-    message: '还没设置小助手的密钥',
-    hint: '请到「设置」里填入 DeepSeek 密钥，或让家人帮您设置',
+    message: '还没设置 DeepSeek 密钥',
+    hint: '请到「设置」里填入 DeepSeek（问问题与写作发送前的意图识别）',
     retryable: false,
   },
   ZENMUX_KEY_MISSING: {
-    message: '还没设置识图的 ZenMux 密钥',
-    hint: '请到「设置」里填入 ZenMux 密钥（用于照片识字）',
+    message: '还没设置 ZenMux 密钥',
+    hint: '请到「设置」里填入 ZenMux（问问题回答、写作改稿、带图问问题与云端识图）',
     retryable: false,
   },
   DASHSCOPE_KEY_MISSING: {

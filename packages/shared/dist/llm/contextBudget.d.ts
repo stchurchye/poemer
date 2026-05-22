@@ -27,7 +27,7 @@ export type ContextUsage = {
     compacted: boolean;
     droppedVerbatimTurns: number;
 };
-export declare const DEFAULT_CONTEXT_WINDOW_TOKENS = 1000000;
+export declare const DEFAULT_CONTEXT_WINDOW_TOKENS = 300000;
 export declare const DEFAULT_OUTPUT_RESERVE_TOKENS = 20000;
 /** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限 */
 export declare const COMPACT_SUMMARY_MAX_TOKENS = 100000;

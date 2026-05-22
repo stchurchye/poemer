@@ -157,6 +157,7 @@ export const api = {
     body: {
       content: string;
       images?: Array<{ imageBase64: string; mimeType?: string }>;
+      imagePreviewUris?: string[];
       contextSelection?: import('@shiren/shared').ContextSelection;
     },
   ) => local().sendChatMessage(sessionId, body),

@@ -298,7 +298,7 @@ export function createLocalStore(initial, deps) {
     function getChatMessages(sessionId) {
         return clone(chatMessages.get(sessionId) ?? []);
     }
-    function addChatMessage(sessionId, role, content) {
+    function addChatMessage(sessionId, role, content, options) {
         const session = chatSessions.get(sessionId);
         if (!session)
             return undefined;
@@ -308,6 +308,9 @@ export function createLocalStore(initial, deps) {
             role,
             content,
             createdAt: now(),
+            ...(options?.imagePreviewUris?.length
+                ? { imagePreviewUris: [...options.imagePreviewUris] }
+                : {}),
         };
         const list = chatMessages.get(sessionId) ?? [];
         list.push(msg);

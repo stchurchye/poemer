@@ -36,7 +36,11 @@ import {
 import { isSpeaking, speakText, stopReadAloud, stopSpeaking } from '../lib/tts';
 import { useListAutoScroll } from '../hooks/useListAutoScroll';
 import { animateTypewriter } from '../lib/typewriter';
-import { CHAT_MAX_IMAGES_PER_MESSAGE, chatStoredUserContent } from '@shiren/shared';
+import {
+  CHAT_MAX_IMAGES_PER_MESSAGE,
+  chatStoredUserContent,
+  chatUserBubbleDisplayText,
+} from '@shiren/shared';
 import { assetToBase64 } from '../lib/imageBase64';
 import {
   pickChatImagesFromSource,
@@ -51,6 +55,8 @@ import { AssistantLoadingRow, LoadingLabel } from '../components/AssistantLoadin
 import { CopyableMessageBubble } from '../components/CopyableMessageBubble';
 import { AssistantComposeDock } from '../components/AssistantComposeDock';
 import { PendingChatImagesStrip } from '../components/PendingChatImagesStrip';
+import { ChatUserMessageImages } from '../components/ChatUserMessageImages';
+import { persistChatImagePreviews } from '../lib/chatImagePreview';
 import { HeaderContextMeter } from '../components/HeaderContextMeter';
 import { ChatIntentConfirmBar } from '../components/ChatIntentConfirmBar';
 import { ContextComposerModal } from '../components/ContextComposerModal';
@@ -381,8 +387,13 @@ export function ChatScreen() {
       const sessionId = session?.id ?? (await ensureSession());
       const userId = `local-user-${Date.now()}`;
       const assistantId = `local-asst-${Date.now()}`;
+      const imagePreviewUris =
+        imageCount > 0 ? await persistChatImagePreviews(sessionId, userId, images) : [];
 
-      const userMsg = localChatMessage(sessionId, 'user', bubbleText, { id: userId });
+      const userMsg = localChatMessage(sessionId, 'user', bubbleText, {
+        id: userId,
+        imagePreviewUris: imagePreviewUris.length > 0 ? imagePreviewUris : undefined,
+      });
       const pendingAssistant = localChatMessage(sessionId, 'assistant', '', {
         id: assistantId,
         status: 'pending',
@@ -401,6 +412,7 @@ export function ChatScreen() {
         const res = await api.sendChatMessage(sessionId, {
           content: sendContent,
           images: imagePayload.length > 0 ? imagePayload : undefined,
+          imagePreviewUris: imagePreviewUris.length > 0 ? imagePreviewUris : undefined,
           contextSelection: contextSelection ?? undefined,
         });
         const fullText = res.data.assistant?.content ?? '';
@@ -700,12 +712,21 @@ export function ChatScreen() {
     const showGuideActions =
       isGuideNotice && item.guidePrompt && !sending && !intentAnalyzing;
     const bubbleContent = chatBubbleText(item);
+    const userPreviewUris =
+      isUser && !isPending ? (item.imagePreviewUris ?? []) : [];
+    const userDisplayText = isUser
+      ? chatUserBubbleDisplayText({
+          content: bubbleContent,
+          imagePreviewUris: userPreviewUris,
+        })
+      : bubbleContent;
+    const copyText = userDisplayText || bubbleContent;
 
     return (
       <View style={chatMessageStyles.row}>
         <CopyableMessageBubble
-          textToCopy={bubbleContent}
-          disabled={isPending || !bubbleContent.trim()}
+          textToCopy={copyText}
+          disabled={isPending || (!copyText.trim() && userPreviewUris.length === 0)}
           style={[
             isUser
               ? [chatMessageStyles.user, isTablet && chatMessageStyles.userTablet]
@@ -735,12 +756,22 @@ export function ChatScreen() {
               {bubbleContent}
             </Text>
           ) : (
-            <MessageRichText
-              content={bubbleContent}
-              variant={isUser ? 'body' : 'reply'}
-              channel="dialog"
-              plainTextStyle={[chatMessageStyles.text, isUser ? textStyles.body : textStyles.reply]}
-            />
+            <>
+              {userPreviewUris.length > 0 ? (
+                <ChatUserMessageImages uris={userPreviewUris} />
+              ) : null}
+              {(!isUser || userDisplayText) && (
+                <MessageRichText
+                  content={isUser ? userDisplayText : bubbleContent}
+                  variant={isUser ? 'body' : 'reply'}
+                  channel="dialog"
+                  plainTextStyle={[
+                    chatMessageStyles.text,
+                    isUser ? textStyles.body : textStyles.reply,
+                  ]}
+                />
+              )}
+            </>
           )}
           {showGuideActions && item.guidePrompt ? (
             <AssistantGuidePromptBlock
