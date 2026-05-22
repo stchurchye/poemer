@@ -31,7 +31,7 @@
       "package": "com.stchurch.shiren",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#faf6f0"
+        "backgroundColor": "#e1f0d7"
       },
       "permissions": [
         "android.permission.CAMERA",
