@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEditorChromeCollapse } from '../hooks/useEditorChromeCollapse';
 import {
   ActivityIndicator,
   Keyboard,
@@ -144,6 +145,8 @@ export function WritingScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { isTablet } = useLayout();
   const { bodyFontSize, bodyLineHeight } = useTypography('article');
+  const { collapsed: editorChromeCollapsed, onInputFocus, onInputBlur, expandChrome } =
+    useEditorChromeCollapse();
   const [initLoading, setInitLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [initErrorHint, setInitErrorHint] = useState<string | undefined>();
@@ -1026,103 +1029,120 @@ export function WritingScreen({ navigation, route }: Props) {
             />
           ) : null}
           <View style={styles.editorPane}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.toolbarScroll}
-              contentContainerStyle={styles.toolbarRow}
-              keyboardShouldPersistTaps="handled"
-            >
-              <WritingToolbarChip
-                label={zh.writing.shareCopyText}
-                onPress={() => void handleCopyChapter()}
-                disabled={sharing}
-              />
-              <WritingToolbarChip
-                label={zh.writing.shareGenerateImage}
-                onPress={() => void handleGenerateChapterImage()}
-                disabled={sharing}
-                loading={sharing}
-              />
-              <WritingToolbarChip
-                label={zh.writing.newArticle}
-                onPress={openDocumentLibrary}
-                disabled={creating}
-              />
-              <WritingToolbarChip
-                label={speaking ? zh.writing.stopReading : zh.writing.readMode}
-                onPress={() => void toggleReadAloud()}
-                active={speaking}
-                tone="light"
-              />
-            </ScrollView>
-
-            <View style={styles.chapterTitleRow}>
-              <Text style={styles.chapterTitleText} numberOfLines={2}>
-                {doc.title}
-              </Text>
-              {!speaking && bodyDraft.trim() ? (
-                <Text style={styles.readCursorHint} numberOfLines={2}>
-                  {zh.writing.readCursorHint}
-                </Text>
-              ) : null}
-              <View style={styles.chapterTitleActions}>
-                <WritingToolbarChip
-                  label={zh.writing.renameArticleTitle}
-                  onPress={() => void renameArticleTitle()}
-                />
-                <WritingToolbarChip
-                  label={zh.writing.history}
-                  onPress={() =>
-                    navigation.navigate('RevisionHistory', {
-                      documentId: doc.id,
-                      title: doc.title,
-                    })
-                  }
-                />
-              </View>
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.chapterBar}
-              contentContainerStyle={styles.chapterBarContent}
-              keyboardShouldPersistTaps="handled"
-            >
-              {sortedChapters.map((ch) => (
-                <Pressable
-                  key={ch.id}
-                  style={[
-                    styles.chapterTab,
-                    activeChapter?.id === ch.id && styles.chapterTabActive,
-                  ]}
-                  onPress={() => void switchChapter(ch.id)}
-                  onLongPress={() => void renameChapter(ch.id)}
-                  delayLongPress={RENAME_LONG_PRESS_MS}
-                >
-                  <Text
-                    style={[
-                      styles.chapterTabText,
-                      activeChapter?.id === ch.id && styles.chapterTabTextActive,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {ch.title}
-                  </Text>
-                </Pressable>
-              ))}
+            {editorChromeCollapsed ? (
               <Pressable
-                style={[styles.chapterAdd, addingChapter && styles.chapterAddDisabled]}
-                onPress={() => void handleAddChapter()}
-                disabled={addingChapter}
-                hitSlop={8}
+                style={styles.chromePeek}
+                onPress={expandChrome}
+                accessibilityRole="button"
+                accessibilityLabel={zh.writing.expandChrome}
               >
-                <Text style={styles.chapterAddText}>
-                  ＋ {addingChapter ? zh.writing.addingChapter : zh.writing.addChapter}
+                <Text style={styles.chromePeekLabel} numberOfLines={1}>
+                  {doc.title}
+                  {activeChapter ? ` · ${activeChapter.title}` : ''}
                 </Text>
+                <Text style={styles.chromePeekAction}>{zh.writing.expandChrome}</Text>
               </Pressable>
-            </ScrollView>
+            ) : (
+              <>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.toolbarScroll}
+                  contentContainerStyle={styles.toolbarRow}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <WritingToolbarChip
+                    label={zh.writing.shareCopyText}
+                    onPress={() => void handleCopyChapter()}
+                    disabled={sharing}
+                  />
+                  <WritingToolbarChip
+                    label={zh.writing.shareGenerateImage}
+                    onPress={() => void handleGenerateChapterImage()}
+                    disabled={sharing}
+                    loading={sharing}
+                  />
+                  <WritingToolbarChip
+                    label={zh.writing.newArticle}
+                    onPress={openDocumentLibrary}
+                    disabled={creating}
+                  />
+                  <WritingToolbarChip
+                    label={speaking ? zh.writing.stopReading : zh.writing.readMode}
+                    onPress={() => void toggleReadAloud()}
+                    active={speaking}
+                    tone="light"
+                  />
+                </ScrollView>
+
+                <View style={styles.chapterTitleRow}>
+                  <Text style={styles.chapterTitleText} numberOfLines={2}>
+                    {doc.title}
+                  </Text>
+                  {!speaking && bodyDraft.trim() ? (
+                    <Text style={styles.readCursorHint} numberOfLines={2}>
+                      {zh.writing.readCursorHint}
+                    </Text>
+                  ) : null}
+                  <View style={styles.chapterTitleActions}>
+                    <WritingToolbarChip
+                      label={zh.writing.renameArticleTitle}
+                      onPress={() => void renameArticleTitle()}
+                    />
+                    <WritingToolbarChip
+                      label={zh.writing.history}
+                      onPress={() =>
+                        navigation.navigate('RevisionHistory', {
+                          documentId: doc.id,
+                          title: doc.title,
+                        })
+                      }
+                    />
+                  </View>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.chapterBar}
+                  contentContainerStyle={styles.chapterBarContent}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  {sortedChapters.map((ch) => (
+                    <Pressable
+                      key={ch.id}
+                      style={[
+                        styles.chapterTab,
+                        activeChapter?.id === ch.id && styles.chapterTabActive,
+                      ]}
+                      onPress={() => void switchChapter(ch.id)}
+                      onLongPress={() => void renameChapter(ch.id)}
+                      delayLongPress={RENAME_LONG_PRESS_MS}
+                    >
+                      <Text
+                        style={[
+                          styles.chapterTabText,
+                          activeChapter?.id === ch.id && styles.chapterTabTextActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {ch.title}
+                      </Text>
+                    </Pressable>
+                  ))}
+                  <Pressable
+                    style={[styles.chapterAdd, addingChapter && styles.chapterAddDisabled]}
+                    onPress={() => void handleAddChapter()}
+                    disabled={addingChapter}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.chapterAddText}>
+                      ＋ {addingChapter ? zh.writing.addingChapter : zh.writing.addChapter}
+                    </Text>
+                  </Pressable>
+                </ScrollView>
+              </>
+            )}
 
             <View style={styles.bodyInputWrap}>
               <AppTextInput
@@ -1146,7 +1166,11 @@ export function WritingScreen({ navigation, route }: Props) {
                 onSelectionChange={(e) => {
                   setSelection(e.nativeEvent.selection);
                 }}
-                onBlur={() => void saveBody()}
+                onFocus={onInputFocus}
+                onBlur={() => {
+                  onInputBlur();
+                  void saveBody();
+                }}
                 multiline
                 scrollEnabled
                 editable
@@ -1417,6 +1441,29 @@ const styles = StyleSheet.create({
     backgroundColor: colors.insertBorder,
     borderWidth: 1,
     borderColor: colors.onPrimary,
+  },
+  chromePeek: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    minHeight: 48,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  chromePeekLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: typography.caption,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  chromePeekAction: {
+    fontSize: typography.caption,
+    fontWeight: '600',
+    color: colors.primary,
   },
   toolbarScroll: {
     flexGrow: 0,

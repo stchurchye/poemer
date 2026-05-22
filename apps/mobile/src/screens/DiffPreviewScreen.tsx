@@ -32,6 +32,7 @@ import {
   suggestionViewOnlyHint,
 } from '../lib/suggestionViewOnly';
 import { leaveDiffPreview, openDiffPreview } from '../lib/openDiffPreview';
+import { useMultiInputChromeCollapse } from '../hooks/useEditorChromeCollapse';
 
 type Props = NativeStackScreenProps<WritingStackParamList, 'DiffPreview'>;
 
@@ -195,6 +196,14 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
   const [accepting, setAccepting] = useState(false);
   const [diffBaseText, setDiffBaseText] = useState(newText ?? '');
   const [focusSection, setFocusSection] = useState<FocusSection>('diff');
+  const {
+    collapsed: chromeCollapsed,
+    onEditFocus,
+    onEditBlur,
+    onRetryFocus,
+    onRetryBlur,
+    expandChrome,
+  } = useMultiInputChromeCollapse();
   const busy = retrying || accepting;
   /** 仅用户手改建议正文时才防抖更新 diff，避免覆盖服务端加载结果 */
   const diffDebounceFromUser = useRef(false);
@@ -422,16 +431,76 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
             { paddingTop: Math.max(insets.top, 12) + 4 },
           ]}
         >
-          <Text
-            style={[
-              styles.pageTitle,
-              { fontSize: pageTitleSize, lineHeight: pageTitleLineHeight },
-            ]}
-          >
-            {pageTitle}
-          </Text>
+          {chromeCollapsed ? (
+            <Pressable
+              style={styles.chromePeek}
+              onPress={expandChrome}
+              accessibilityRole="button"
+              accessibilityLabel={zh.writing.expandChrome}
+            >
+              <Text
+                style={[styles.chromePeekLabel, { fontSize: panelLabelSize }]}
+                numberOfLines={1}
+              >
+                {pageTitle}
+                {retryPanelOpen ? ` · ${zh.diff.rejectRetry}` : ` · ${zh.diff.editPanelLabel}`}
+              </Text>
+              <Text style={[styles.chromePeekAction, { fontSize: panelLabelSize }]}>
+                {zh.writing.expandChrome}
+              </Text>
+            </Pressable>
+          ) : (
+            <Text
+              style={[
+                styles.pageTitle,
+                { fontSize: pageTitleSize, lineHeight: pageTitleLineHeight },
+              ]}
+            >
+              {pageTitle}
+            </Text>
+          )}
 
           <View style={styles.contentAboveFooter}>
+            {chromeCollapsed && !retryPanelOpen ? (
+              <View style={styles.collapsedEditPane}>
+                <Text
+                  style={[
+                    styles.collapsedEditLabel,
+                    { fontSize: panelLabelSize, lineHeight: panelLabelLineHeight },
+                  ]}
+                >
+                  {zh.diff.editPanelLabel}
+                </Text>
+                <View style={styles.panelBody}>
+                  {revisionLoading && !editedText.trim() && !newText?.trim() ? (
+                    <View style={styles.revisionLoading}>
+                      <ActivityIndicator color={colors.primary} />
+                      <Text style={[styles.revisionLoadingText, { fontSize: contentFontSize }]}>
+                        {zh.common.loading}
+                      </Text>
+                    </View>
+                  ) : (
+                    <AppTextInput
+                      containerStyle={styles.editInputWrap}
+                      style={[
+                        styles.editInput,
+                        { fontSize: contentFontSize, lineHeight: contentLineHeight },
+                      ]}
+                      placeholder={zh.diff.editSuggestionPlaceholder}
+                      placeholderTextColor={colors.textMuted}
+                      value={editedText}
+                      onChangeText={handleEditedTextChange}
+                      onFocus={onEditFocus}
+                      onBlur={onEditBlur}
+                      multiline
+                      scrollEnabled
+                      textAlignVertical="top"
+                      editable={!busy && canEdit}
+                    />
+                  )}
+                </View>
+              </View>
+            ) : chromeCollapsed && retryPanelOpen ? null : (
             <View style={styles.sectionsStack}>
             <FocusSectionPanel
               section="diff"
@@ -487,6 +556,8 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
                     placeholderTextColor={colors.textMuted}
                     value={editedText}
                     onChangeText={handleEditedTextChange}
+                    onFocus={onEditFocus}
+                    onBlur={onEditBlur}
                     multiline
                     scrollEnabled
                     textAlignVertical="top"
@@ -496,6 +567,7 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
               </View>
             </FocusSectionPanel>
             </View>
+            )}
 
             {!canEdit && viewOnlyHintText ? (
               <Text
@@ -525,6 +597,8 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
                   placeholderTextColor={colors.textMuted}
                   value={retryInput}
                   onChangeText={setRetryInput}
+                  onFocus={onRetryFocus}
+                  onBlur={onRetryBlur}
                   multiline
                   scrollEnabled
                   textAlignVertical="top"
@@ -595,6 +669,44 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     flexShrink: 0,
     paddingHorizontal: 2,
+  },
+  chromePeek: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 2,
+    paddingVertical: 8,
+    minHeight: 48,
+    marginBottom: 8,
+    flexShrink: 0,
+  },
+  chromePeekLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  chromePeekAction: {
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  collapsedEditPane: {
+    flex: 1,
+    minHeight: 0,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  collapsedEditLabel: {
+    fontWeight: '700',
+    color: colors.text,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
   contentAboveFooter: {
     flex: 1,

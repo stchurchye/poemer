@@ -52,6 +52,7 @@ export const zh = {
     expand: '扩写',
     tone: '改语气',
     photo: '拍手写',
+    expandChrome: '展开',
     speak: '按住说话',
     listening: '正在听您说…',
     releaseToFinish: '松开结束',
