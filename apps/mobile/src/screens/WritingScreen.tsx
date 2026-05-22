@@ -100,6 +100,8 @@ function WritingToolbarChip({
   disabled,
   loading,
   tone = 'default',
+  fontSize,
+  lineHeight,
 }: {
   label: string;
   onPress: () => void;
@@ -107,6 +109,8 @@ function WritingToolbarChip({
   disabled?: boolean;
   loading?: boolean;
   tone?: 'default' | 'light';
+  fontSize: number;
+  lineHeight: number;
 }) {
   const isLight = tone === 'light' && !active;
   return (
@@ -130,6 +134,7 @@ function WritingToolbarChip({
         <Text
           style={[
             styles.toolbarChipText,
+            { fontSize, lineHeight },
             isLight && styles.toolbarChipLightText,
             active && styles.toolbarChipTextActive,
           ]}
@@ -143,8 +148,10 @@ function WritingToolbarChip({
 
 export function WritingScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { isTablet } = useLayout();
+  const { isTablet, smallFontSize } = useLayout();
   const { bodyFontSize, bodyLineHeight } = useTypography('article');
+  const chromeFontSize = smallFontSize;
+  const chromeLineHeight = Math.round(chromeFontSize * 1.15);
   const { collapsed: editorChromeCollapsed, onInputFocus, onInputBlur, expandChrome } =
     useEditorChromeCollapse();
   const [initLoading, setInitLoading] = useState(true);
@@ -1055,23 +1062,31 @@ export function WritingScreen({ navigation, route }: Props) {
                     label={zh.writing.shareCopyText}
                     onPress={() => void handleCopyChapter()}
                     disabled={sharing}
+                    fontSize={chromeFontSize}
+                    lineHeight={chromeLineHeight}
                   />
                   <WritingToolbarChip
                     label={zh.writing.shareGenerateImage}
                     onPress={() => void handleGenerateChapterImage()}
                     disabled={sharing}
                     loading={sharing}
+                    fontSize={chromeFontSize}
+                    lineHeight={chromeLineHeight}
                   />
                   <WritingToolbarChip
                     label={zh.writing.newArticle}
                     onPress={openDocumentLibrary}
                     disabled={creating}
+                    fontSize={chromeFontSize}
+                    lineHeight={chromeLineHeight}
                   />
                   <WritingToolbarChip
                     label={speaking ? zh.writing.stopReading : zh.writing.readMode}
                     onPress={() => void toggleReadAloud()}
                     active={speaking}
                     tone="light"
+                    fontSize={chromeFontSize}
+                    lineHeight={chromeLineHeight}
                   />
                 </ScrollView>
 
@@ -1088,6 +1103,8 @@ export function WritingScreen({ navigation, route }: Props) {
                     <WritingToolbarChip
                       label={zh.writing.renameArticleTitle}
                       onPress={() => void renameArticleTitle()}
+                      fontSize={chromeFontSize}
+                      lineHeight={chromeLineHeight}
                     />
                     <WritingToolbarChip
                       label={zh.writing.history}
@@ -1097,6 +1114,8 @@ export function WritingScreen({ navigation, route }: Props) {
                           title: doc.title,
                         })
                       }
+                      fontSize={chromeFontSize}
+                      lineHeight={chromeLineHeight}
                     />
                   </View>
                 </View>
@@ -1122,6 +1141,7 @@ export function WritingScreen({ navigation, route }: Props) {
                       <Text
                         style={[
                           styles.chapterTabText,
+                          { fontSize: chromeFontSize, lineHeight: chromeLineHeight },
                           activeChapter?.id === ch.id && styles.chapterTabTextActive,
                         ]}
                         numberOfLines={1}
@@ -1136,7 +1156,12 @@ export function WritingScreen({ navigation, route }: Props) {
                     disabled={addingChapter}
                     hitSlop={8}
                   >
-                    <Text style={styles.chapterAddText}>
+                    <Text
+                      style={[
+                        styles.chapterAddText,
+                        { fontSize: chromeFontSize, lineHeight: chromeLineHeight },
+                      ]}
+                    >
                       ＋ {addingChapter ? zh.writing.addingChapter : zh.writing.addChapter}
                     </Text>
                   </Pressable>
@@ -1447,8 +1472,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    minHeight: 40,
+    paddingVertical: 4,
+    minHeight: 32,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     backgroundColor: colors.surface,
@@ -1474,17 +1499,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    gap: 8,
+    paddingVertical: 4,
+    gap: 6,
   },
   toolbarChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.primaryBorder,
     backgroundColor: colors.primarySoft,
-    minHeight: 40,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1498,7 +1522,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   toolbarChipText: {
-    fontSize: typography.caption,
     fontWeight: '600',
     color: colors.primaryMutedText,
   },
@@ -1508,21 +1531,20 @@ const styles = StyleSheet.create({
   },
   toolbarChipTextActive: { color: colors.onPrimary },
   chapterBar: {
-    maxHeight: 56,
+    maxHeight: 44,
     marginBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 6, paddingVertical: 2 },
+  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 4, paddingVertical: 2 },
   chapterTab: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
     backgroundColor: colors.surface,
-    marginVertical: 2,
+    marginVertical: 1,
     borderWidth: 1,
     borderColor: colors.border,
-    minHeight: 40,
     justifyContent: 'center',
   },
   chapterTabActive: {
@@ -1530,22 +1552,19 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   chapterTabText: {
-    fontSize: typography.caption,
     color: colors.textMuted,
-    lineHeight: Math.round(typography.caption * 1.2),
   },
   chapterTabTextActive: { color: colors.text, fontWeight: '600' },
   chapterAdd: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
     backgroundColor: colors.primarySoft,
-    marginVertical: 2,
-    minHeight: 40,
+    marginVertical: 1,
     justifyContent: 'center',
   },
   chapterAddDisabled: { opacity: 0.6 },
-  chapterAddText: { fontSize: typography.caption, color: colors.primary, fontWeight: '600' },
+  chapterAddText: { color: colors.primary, fontWeight: '600' },
   toast: {
     backgroundColor: colors.insertBg,
     padding: 12,
@@ -1556,9 +1575,9 @@ const styles = StyleSheet.create({
   toastText: { fontSize: typography.caption, color: colors.text, textAlign: 'center' },
   chapterTitleRow: {
     paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 6,
-    gap: 8,
+    paddingTop: 4,
+    paddingBottom: 4,
+    gap: 6,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
