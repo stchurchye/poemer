@@ -133,7 +133,9 @@ export function MeScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <TabletFrame variant="settings" scrollChild>
-        <Text style={[styles.title, isTablet && styles.titleTablet]}>{zh.me.title}</Text>
+        {isTablet ? (
+          <Text style={[styles.title, styles.titleTablet]}>{zh.me.title}</Text>
+        ) : null}
 
         <LocalDataCard />
 

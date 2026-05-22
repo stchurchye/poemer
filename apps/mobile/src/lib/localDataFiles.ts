@@ -10,6 +10,7 @@ import {
 } from '@shiren/shared';
 
 const ROOT = FileSystem.documentDirectory ?? '';
+const EXPORTS_DIR = `${ROOT}exports/`;
 const STORE_FILE = `${ROOT}shiren-store.json`;
 const BACKUP_FILE = `${ROOT}shiren-store.bak.json`;
 const TEMP_FILE = `${ROOT}shiren-store.tmp.json`;
@@ -119,21 +120,46 @@ export async function getLocalDataStatus(): Promise<LocalDataStatus> {
   };
 }
 
-export async function exportLocalDataPackage(store: PersistedStore): Promise<string> {
+async function ensureExportsDir(): Promise<void> {
+  const info = await FileSystem.getInfoAsync(EXPORTS_DIR);
+  if (!info.exists) {
+    await FileSystem.makeDirectoryAsync(EXPORTS_DIR, { intermediates: true });
+  }
+}
+
+/** 写入应用文档目录 exports/，可在本机保留多份备份 */
+export async function saveLocalDataPackageToDevice(
+  store: PersistedStore,
+): Promise<{ path: string; fileName: string }> {
+  await ensureExportsDir();
   const bundle = makeShirenExportBundle(store, {
     appVersion: Constants.expoConfig?.version ?? 'unknown',
   });
-  const exportPath = `${FileSystem.cacheDirectory ?? ROOT}${exportFileName()}`;
+  const fileName = exportFileName();
+  const exportPath = `${EXPORTS_DIR}${fileName}`;
   await FileSystem.writeAsStringAsync(exportPath, JSON.stringify(bundle, null, 2));
-  if (!(await Sharing.isAvailableAsync())) {
-    throw new Error('SHARING_NOT_AVAILABLE');
+  return { path: exportPath, fileName };
+}
+
+/** 先保存到本机 exports/，再打开系统分享（可选存到「文件」、微信等） */
+export async function exportLocalDataPackage(
+  store: PersistedStore,
+): Promise<{ path: string; fileName: string; shared: boolean }> {
+  const saved = await saveLocalDataPackageToDevice(store);
+  let shared = false;
+  if (await Sharing.isAvailableAsync()) {
+    try {
+      await Sharing.shareAsync(saved.path, {
+        mimeType: 'application/json',
+        dialogTitle: '导出诗人数据',
+        UTI: 'public.json',
+      });
+      shared = true;
+    } catch {
+      // 用户取消分享或分享失败时，本机文件仍保留
+    }
   }
-  await Sharing.shareAsync(exportPath, {
-    mimeType: 'application/json',
-    dialogTitle: '导出诗人数据',
-    UTI: 'public.json',
-  });
-  return exportPath;
+  return { ...saved, shared };
 }
 
 export async function parseImportFile(uri: string): Promise<PersistedStore> {

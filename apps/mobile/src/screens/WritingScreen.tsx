@@ -37,7 +37,7 @@ import type { AssistantGuideNav } from '../lib/assistantGuide';
 import type { RootTabParamList } from '../navigation/types';
 import { pickReadPortion, type ReadPortionMode, type TextSelection } from '../lib/readAloud';
 import { cancelAssistantFeedback } from '../lib/assistantFeedback';
-import { isSpeaking, speakText, stopSpeaking } from '../lib/tts';
+import { isSpeaking, speakText, stopReadAloud, stopSpeaking } from '../lib/tts';
 import { AppTextInput } from '../components/AppTextInput';
 import { LoadErrorView } from '../components/LoadErrorView';
 import { ReconnectBanner } from '../components/ReconnectBanner';
@@ -218,7 +218,6 @@ export function WritingScreen({ navigation, route }: Props) {
   const closeAssistant = useCallback(() => {
     setAssistantOpen(false);
     setAssistantHeaderRead(null);
-    void cancelAssistantFeedback();
   }, []);
 
   const loadDocumentsInit = useCallback(async () => {
@@ -366,8 +365,7 @@ export function WritingScreen({ navigation, route }: Props) {
     useCallback(() => {
       void refreshSuggestionRevision();
       return () => {
-        void cancelAssistantFeedback();
-        void stopSpeaking();
+        void stopReadAloud();
         setSpeaking(false);
         setReadHint(null);
       };
@@ -384,12 +382,6 @@ export function WritingScreen({ navigation, route }: Props) {
       return () => clearTimeout(t);
     }
   }, [toast]);
-
-  useEffect(() => {
-    return () => {
-      void stopSpeaking();
-    };
-  }, []);
 
   const readingLabel = (mode: ReadPortionMode) => {
     if (mode === 'selection') return zh.writing.readingSelection;
@@ -415,23 +407,28 @@ export function WritingScreen({ navigation, route }: Props) {
       return;
     }
 
+    void cancelAssistantFeedback();
     setSpeaking(true);
     setReadHint(readingLabel(portion.mode));
     try {
-      await speakText(portion.text, {
-        onDone: () => {
-          setSpeaking(false);
-          setReadHint(null);
+      await speakText(
+        portion.text,
+        {
+          onDone: () => {
+            setSpeaking(false);
+            setReadHint(null);
+          },
+          onStopped: () => {
+            setSpeaking(false);
+            setReadHint(null);
+          },
+          onError: () => {
+            setSpeaking(false);
+            setReadHint(null);
+          },
         },
-        onStopped: () => {
-          setSpeaking(false);
-          setReadHint(null);
-        },
-        onError: () => {
-          setSpeaking(false);
-          setReadHint(null);
-        },
-      });
+        { playbackKind: 'readAloud' },
+      );
     } catch {
       setSpeaking(false);
       setReadHint(null);

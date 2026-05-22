@@ -34,8 +34,8 @@ export function LocalDataCard() {
     try {
       const store = snapshot();
       if (!store) throw new Error('LOCAL_STORE_NOT_READY');
-      await exportLocalDataPackage(store);
-      appAlert('好了', zh.me.localDataExportDone);
+      const { fileName, shared } = await exportLocalDataPackage(store);
+      appAlert('好了', zh.me.localDataExportDone(fileName, shared));
       await refresh();
     } catch {
       appAlert('提示', zh.me.localDataExportFailed);

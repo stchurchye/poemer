@@ -33,7 +33,7 @@ import {
   announceAssistantWaiting,
   cancelAssistantFeedback,
 } from '../lib/assistantFeedback';
-import { isSpeaking, speakText, stopSpeaking } from '../lib/tts';
+import { isSpeaking, speakText, stopReadAloud, stopSpeaking } from '../lib/tts';
 import { useListAutoScroll } from '../hooks/useListAutoScroll';
 import { animateTypewriter } from '../lib/typewriter';
 import { CHAT_MAX_IMAGES_PER_MESSAGE, chatStoredUserContent } from '@shiren/shared';
@@ -228,10 +228,6 @@ export function ChatScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void cancelAssistantFeedback();
-      void stopSpeaking();
-      setSpeaking(false);
-
       if (messages.length > 0) {
         scrollToEnd(false);
       }
@@ -239,8 +235,7 @@ export function ChatScreen() {
         messages.length > 0 ? setTimeout(() => scrollToEnd(false), 280) : undefined;
       return () => {
         if (t) clearTimeout(t);
-        void cancelAssistantFeedback();
-        void stopSpeaking();
+        void stopReadAloud();
         setSpeaking(false);
       };
     }, [messages.length, scrollToEnd]),
@@ -275,8 +270,6 @@ export function ChatScreen() {
   useEffect(() => {
     return () => {
       typewriterAbortRef.current?.abort();
-      void cancelAssistantFeedback();
-      void stopSpeaking();
     };
   }, []);
 
@@ -685,11 +678,15 @@ export function ChatScreen() {
     void cancelAssistantFeedback();
     setSpeaking(true);
     try {
-      await speakText(text, {
-        onDone: () => setSpeaking(false),
-        onStopped: () => setSpeaking(false),
-        onError: () => setSpeaking(false),
-      });
+      await speakText(
+        text,
+        {
+          onDone: () => setSpeaking(false),
+          onStopped: () => setSpeaking(false),
+          onError: () => setSpeaking(false),
+        },
+        { playbackKind: 'readAloud' },
+      );
     } catch {
       setSpeaking(false);
     }
@@ -1056,8 +1053,6 @@ const styles = StyleSheet.create({
   emptyTablet: { fontSize: typography.body, marginTop: 56 },
   composeWrap: {
     flexShrink: 0,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
     paddingTop: 10,
     paddingHorizontal: 4,
   },

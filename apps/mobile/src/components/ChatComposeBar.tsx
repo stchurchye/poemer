@@ -18,6 +18,7 @@ import { ensureSpeechPermissions } from '../lib/speech/localRecognition';
 import { pickChatImagesFromSource } from '../lib/pickChatImage';
 import { appAlert } from '../lib/appAlert';
 import { colors } from '../theme/colors';
+import { radius } from '../theme/tokens';
 import type { FontChannel } from '../theme/fontPresets';
 import { useLayout, useTypography } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
@@ -305,9 +306,10 @@ const styles = StyleSheet.create({
   barOuter: {
     borderWidth: 2,
     borderColor: 'transparent',
-    borderRadius: 12,
+    borderRadius: radius.md,
     marginHorizontal: 4,
     marginTop: 2,
+    overflow: 'hidden',
   },
   bar: {
     flexDirection: 'row',
@@ -316,8 +318,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingTop: 6,
     backgroundColor: colors.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
+    borderRadius: radius.md,
   },
   iconBtn: {
     alignItems: 'center',
@@ -333,7 +334,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     maxHeight: 140,
     backgroundColor: colors.background,
-    borderRadius: 10,
+    borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     overflow: 'hidden',
@@ -365,7 +366,7 @@ const styles = StyleSheet.create({
   },
   sendBtn: {
     paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: radius.sm,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -376,7 +377,7 @@ const styles = StyleSheet.create({
   },
   imageTextBtn: {
     paddingHorizontal: 12,
-    borderRadius: 10,
+    borderRadius: radius.sm,
     backgroundColor: colors.primarySoft,
     borderWidth: 1,
     borderColor: colors.primaryBorder,

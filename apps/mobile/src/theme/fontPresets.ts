@@ -1,8 +1,14 @@
-export type FontSizePreset = 'small' | 'medium' | 'large' | 'xlarge';
+export type FontSizePreset = 'xsmall' | 'small' | 'medium' | 'large' | 'xlarge';
 
 export type FontChannel = 'article' | 'dialog';
 
-export const FONT_SIZE_PRESETS: FontSizePreset[] = ['small', 'medium', 'large', 'xlarge'];
+export const FONT_SIZE_PRESETS: FontSizePreset[] = [
+  'xsmall',
+  'small',
+  'medium',
+  'large',
+  'xlarge',
+];
 
 export const DEFAULT_FONT_SIZE_PRESET: FontSizePreset = 'large';
 
@@ -29,6 +35,7 @@ type FontPresetRow = {
 
 /** 手机端字号表；默认 large 与现 layout.ts 一致 */
 const PHONE_PRESETS: Record<FontSizePreset, FontPresetRow> = {
+  xsmall: { title: 26, body: 22, caption: 18, button: 20, small: 16 },
   small: { title: 30, body: 26, caption: 22, button: 24, small: 20 },
   medium: { title: 33, body: 29, caption: 24, button: 26, small: 22 },
   large: { title: 36, body: 32, caption: 26, button: 28, small: 24 },

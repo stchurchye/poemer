@@ -24,6 +24,38 @@ let legacyVoiceMigrated = false;
 export type ChineseVoice = Voice;
 export type TtsDialect = 'mandarin' | 'cantonese';
 
+/** 区分「开始朗读」与用户主动停播；切页时仅打断 readAloud */
+export type TtsPlaybackKind = 'readAloud' | 'assistant';
+
+let activePlaybackKind: TtsPlaybackKind | null = null;
+
+function clearPlaybackKind(kind: TtsPlaybackKind): void {
+  if (activePlaybackKind === kind) activePlaybackKind = null;
+}
+
+type TtsCallbacks = Pick<SpeechOptions, 'onDone' | 'onStopped' | 'onError' | 'onStart'>;
+
+function wrapPlaybackCallbacks(
+  callbacks: TtsCallbacks | undefined,
+  kind: TtsPlaybackKind,
+): TtsCallbacks {
+  return {
+    onStart: () => callbacks?.onStart?.(),
+    onDone: () => {
+      clearPlaybackKind(kind);
+      callbacks?.onDone?.();
+    },
+    onStopped: () => {
+      clearPlaybackKind(kind);
+      callbacks?.onStopped?.();
+    },
+    onError: (e) => {
+      clearPlaybackKind(kind);
+      callbacks?.onError?.(e);
+    },
+  };
+}
+
 /** Qwen3-TTS（阿里云百炼） */
 export const TTS_ENGINE_QWEN = 'Qwen3-TTS';
 /** 系统 TTS（expo-speech / iOS·Android 自带朗读引擎） */
@@ -237,27 +269,32 @@ async function speakWithSystem(
 
 export async function speakText(
   text: string,
-  callbacks?: Pick<SpeechOptions, 'onDone' | 'onStopped' | 'onError' | 'onStart'>,
-  options?: { voiceId?: string; dialect?: TtsDialect },
+  callbacks?: TtsCallbacks,
+  options?: { voiceId?: string; dialect?: TtsDialect; playbackKind?: TtsPlaybackKind },
 ): Promise<void> {
   const trimmed = text.trim();
   if (!trimmed) return;
+
+  const kind = options?.playbackKind ?? 'assistant';
+  activePlaybackKind = kind;
+  const wrapped = wrapPlaybackCallbacks(callbacks, kind);
 
   const dialect = options?.dialect ?? (await getStoredDialect());
   try {
     if (await hasQwenTts()) {
       const voice = await resolveQwenVoiceId(dialect, options?.voiceId);
-      await playQwenSpeech(trimmed, voice, dialect, callbacks);
+      await playQwenSpeech(trimmed, voice, dialect, wrapped);
       return;
     }
 
-    await speakWithSystem(trimmed, callbacks, { ...options, dialect });
+    await speakWithSystem(trimmed, wrapped, { voiceId: options?.voiceId, dialect });
   } catch (e) {
+    clearPlaybackKind(kind);
     if (isTtsStoppedError(e)) {
-      callbacks?.onStopped?.();
+      wrapped.onStopped?.();
       return;
     }
-    callbacks?.onError?.(e as Error);
+    wrapped.onError?.(e as Error);
     alertTtsFailure(e);
     throw e;
   }
@@ -273,8 +310,15 @@ export async function speakChinese(
 }
 
 export async function stopSpeaking(): Promise<void> {
+  activePlaybackKind = null;
   await stopQwenPlayback();
   await Speech.stop();
+}
+
+/** 切页时仅停止「开始朗读」/「朗读回复」，不打断小助手 TTS */
+export async function stopReadAloud(): Promise<void> {
+  if (activePlaybackKind !== 'readAloud') return;
+  await stopSpeaking();
 }
 
 export async function isSpeaking(): Promise<boolean> {

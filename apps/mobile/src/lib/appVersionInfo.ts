@@ -38,37 +38,15 @@ function formatDateTime(d: Date): string {
   });
 }
 
-/** 设置页底部展示用，每行一条 */
-export function formatAppVersionFooterLines(info: AppVersionInfo): string[] {
+/** 设置页底部：版本号 + 当前包更新时间 */
+export function getAppVersionFooterLabel(info: AppVersionInfo): string {
   if (info.isDev) {
-    return [`版本 ${info.appVersion}`, '开发模式（不走热更新）'];
+    return `版本 ${info.appVersion}`;
   }
+  const timeLabel = info.updateCreatedAt ? formatDateTime(info.updateCreatedAt) : null;
+  return timeLabel ? `${info.appVersion} · ${timeLabel}` : `版本 ${info.appVersion}`;
+}
 
-  const versionLabel = info.nativeBuildVersion
-    ? `版本 ${info.appVersion}（${info.nativeBuildVersion}）`
-    : `版本 ${info.appVersion}`;
-  const channelLabel = info.channel ? `渠道 ${info.channel}` : '渠道未配置';
-  const lines = [`${versionLabel} · ${channelLabel}`];
-
-  if (!info.updatesEnabled) {
-    lines.push('热更新未启用');
-    return lines;
-  }
-
-  if (info.isEmbeddedLaunch) {
-    lines.push('热更新：内置包（安装后尚未拉到线上更新）');
-    return lines;
-  }
-
-  const shortId = info.updateId?.slice(0, 8) ?? '—';
-  const timeLabel = info.updateCreatedAt
-    ? formatDateTime(info.updateCreatedAt)
-    : '—';
-  lines.push(`热更新 ${shortId} · ${timeLabel}`);
-
-  if (info.runtimeVersion) {
-    lines.push(`运行时 ${info.runtimeVersion}`);
-  }
-
-  return lines;
+export function canManualOtaUpdate(info: AppVersionInfo): boolean {
+  return !info.isDev && info.updatesEnabled;
 }

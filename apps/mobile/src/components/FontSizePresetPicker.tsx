@@ -9,6 +9,7 @@ import { useLayout } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 
 const PRESET_LABEL: Record<FontSizePreset, string> = {
+  xsmall: zh.me.fontPresetXsmall,
   small: zh.me.fontPresetSmall,
   medium: zh.me.fontPresetMedium,
   large: zh.me.fontPresetLarge,

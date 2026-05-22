@@ -32,13 +32,12 @@ import {
   announceAssistantSpeak,
   announceAssistantWaiting,
   cancelAssistantFeedback,
-  playAssistantReadySound,
 } from '../lib/assistantFeedback';
 import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
 import { ReconnectBanner } from './ReconnectBanner';
 import { useListAutoScroll } from '../hooks/useListAutoScroll';
 import { animateTypewriter } from '../lib/typewriter';
-import { isSpeaking, speakText, stopSpeaking } from '../lib/tts';
+import { isSpeaking, speakText, stopReadAloud, stopSpeaking } from '../lib/tts';
 import {
   collectWritingAssistantRepliesFromScreen,
   writingBubbleText,
@@ -337,8 +336,7 @@ export function WritingAssistantPanel({
   useEffect(() => {
     return () => {
       typewriterAbortRef.current?.abort();
-      void cancelAssistantFeedback();
-      void stopSpeaking();
+      void stopReadAloud();
     };
   }, []);
 
@@ -370,11 +368,15 @@ export function WritingAssistantPanel({
     void cancelAssistantFeedback();
     setSpeaking(true);
     try {
-      await speakText(text, {
-        onDone: () => setSpeaking(false),
-        onStopped: () => setSpeaking(false),
-        onError: () => setSpeaking(false),
-      });
+      await speakText(
+        text,
+        {
+          onDone: () => setSpeaking(false),
+          onStopped: () => setSpeaking(false),
+          onError: () => setSpeaking(false),
+        },
+        { playbackKind: 'readAloud' },
+      );
     } catch {
       setSpeaking(false);
     }
@@ -628,10 +630,9 @@ export function WritingAssistantPanel({
   }, [runWritingDirectChat, directChatLoading]);
 
   const applyWritingChatIntentResult = useCallback(
-    (
+    async (
       res: Awaited<ReturnType<typeof api.analyzeWritingAssistantIntent>>,
       userBubble: WritingUiMessage,
-      trimmed: string,
     ) => {
       const serverUser = res.data.user;
       const serverAssistant = res.data.assistant;
@@ -640,6 +641,8 @@ export function WritingAssistantPanel({
         res.data.displayText?.trim() ||
         serverAssistant?.content?.trim() ||
         '';
+      const assistantId = serverAssistant?.id ?? `local-asst-${Date.now()}`;
+
       setMessages((prev) => {
         const withoutLocal = prev.filter(
           (m) => m.id !== userBubble.id && !m.localIntentUser,
@@ -648,23 +651,59 @@ export function WritingAssistantPanel({
         if (serverUser) {
           next.push({ ...serverUser, status: 'done' as const });
         } else {
-          next.push(userBubble);
+          next.push({ ...userBubble, status: 'done' as const, localIntentUser: undefined });
         }
-        if (serverAssistant) {
-          next.push({ ...serverAssistant, status: 'done' as const });
-        } else if (reply) {
-          next.push(localMessage(documentId, 'assistant', reply, 'chat', { status: 'done' }));
+        if (reply) {
+          if (serverAssistant) {
+            next.push({
+              ...serverAssistant,
+              id: assistantId,
+              status: 'pending' as const,
+              content: reply,
+              displayContent: '',
+            });
+          } else {
+            next.push(
+              localMessage(documentId, 'assistant', reply, 'chat', {
+                id: assistantId,
+                status: 'pending',
+                displayContent: '',
+                content: reply,
+              }),
+            );
+          }
         }
         return next;
       });
       scrollToEnd();
-      if (reply) {
-        void cancelAssistantFeedback().then(() => {
-          announceAssistantSpeak(reply);
-        });
-      }
+      if (!reply) return;
+
+      await cancelAssistantFeedback();
+      await announceAssistantReplySync(reply);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? { ...m, status: 'streaming' as const, displayContent: '' }
+            : m,
+        ),
+      );
+      await revealMessage(assistantId, reply);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId
+            ? {
+                ...(serverAssistant ?? m),
+                id: serverAssistant?.id ?? assistantId,
+                status: 'done',
+                displayContent: undefined,
+                content: reply,
+              }
+            : m,
+        ),
+      );
+      scrollToEnd();
     },
-    [documentId, scrollToEnd],
+    [documentId, scrollToEnd, revealMessage],
   );
 
   const requestSend = useCallback(
@@ -731,7 +770,7 @@ export function WritingAssistantPanel({
             source: _source,
           };
         } else if (mode === 'chat') {
-          applyWritingChatIntentResult(res, userBubble, trimmed);
+          await applyWritingChatIntentResult(res, userBubble);
         } else if (mode === 'revise' && !res.data.ready) {
           const clarify = res.data.displayText.trim();
           setMessages((prev) => [
@@ -902,7 +941,7 @@ export function WritingAssistantPanel({
       for (const m of newOnes) {
         if (m.role !== 'assistant' || !m.content.trim()) continue;
         if (m.kind === 'notice' || m.kind === 'revision_ready') continue;
-        playAssistantReadySound();
+        await announceAssistantReplySync(m.content);
         await revealMessage(m.id, m.content);
       }
 
