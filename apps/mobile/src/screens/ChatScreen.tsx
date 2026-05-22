@@ -24,10 +24,12 @@ import {
   getAssistantIntentAnalyzingLine,
   getAssistantThinkingLine,
   getAssistantThinkingLongLine,
+  getChatIntentUnderstandSpeakPrefix,
 } from '../lib/assistantCopy';
 import {
   announceAssistantReplyParallel,
   announceAssistantReplySync,
+  announceAssistantSpeak,
   announceAssistantWaiting,
   cancelAssistantFeedback,
 } from '../lib/assistantFeedback';
@@ -560,6 +562,7 @@ export function ChatScreen() {
           scrollToEnd();
           return;
         }
+        const displayText = res.data.displayText?.trim() ?? '';
         setPendingIntent({
           rawText: trimmed,
           source,
@@ -568,6 +571,10 @@ export function ChatScreen() {
           ready: res.data.ready,
         });
         scrollToEnd();
+        if (displayText) {
+          const prefix = await getChatIntentUnderstandSpeakPrefix();
+          announceAssistantSpeak(`${prefix}${displayText}`);
+        }
       } catch (e) {
         const { message, hint } = apiErrorText(e);
         if (source === 'text') setInput(trimmed);

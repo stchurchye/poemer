@@ -20,6 +20,13 @@ export async function getAssistantThinkingLongLine(): Promise<string> {
   return (await isCantonese()) ? zh.writing.thinkingLongYue : zh.writing.thinkingLongZh;
 }
 
+/** 问问题意图确认：朗读「小助手理解」时的口语前缀（仅此处使用） */
+export async function getChatIntentUnderstandSpeakPrefix(): Promise<string> {
+  return (await isCantonese())
+    ? zh.chat.intentUnderstandSpeakPrefixYue
+    : zh.chat.intentUnderstandSpeakPrefixZh;
+}
+
 /** 用户确认改稿后的等待话术（普通话 / 粤语） */
 export async function getAssistantContinueLine(): Promise<string> {
   return (await isCantonese()) ? zh.writing.continueActionYue : zh.writing.continueActionZh;

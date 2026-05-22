@@ -121,13 +121,12 @@ export function announceAssistantReplyParallel(fullText: string): void {
   })();
 }
 
-/** 回复到达：先停掉等待/超时朗读，再合成起播，与打字机同步 */
+/** 回复到达：先停掉等待/超时朗读，等 TTS 起播后再 resolve（与打字机同步） */
 export async function announceAssistantReplySync(fullText: string): Promise<void> {
   const trimmed = fullText.trim();
   if (!trimmed) return;
 
   await cancelAssistantFeedback();
-  playAssistantReadySound();
   const gen = bumpGeneration();
 
   return new Promise<void>((resolve) => {
@@ -138,35 +137,33 @@ export async function announceAssistantReplySync(fullText: string): Promise<void
       resolve();
     };
 
-    const timer = setTimeout(doResolve, 5_000);
+    // 仅 onStart 触发同步；勿用 onDone（那是播完）或短超时（合成常 >5s）
+    const fallback = setTimeout(doResolve, 15_000);
 
     void (async () => {
       if (gen !== speakGeneration) {
-        clearTimeout(timer);
+        clearTimeout(fallback);
         doResolve();
         return;
       }
       try {
         await speakText(trimmed, {
           onStart: () => {
-            clearTimeout(timer);
-            doResolve();
-          },
-          onDone: () => {
-            clearTimeout(timer);
-            doResolve();
-          },
-          onStopped: () => {
-            clearTimeout(timer);
+            playAssistantReadySound();
+            clearTimeout(fallback);
             doResolve();
           },
           onError: () => {
-            clearTimeout(timer);
+            clearTimeout(fallback);
+            doResolve();
+          },
+          onStopped: () => {
+            clearTimeout(fallback);
             doResolve();
           },
         });
       } catch {
-        clearTimeout(timer);
+        clearTimeout(fallback);
         doResolve();
       }
     })();
