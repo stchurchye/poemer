@@ -35,6 +35,7 @@ import {
 } from '../lib/assistantFeedback';
 import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
 import { ReconnectBanner } from './ReconnectBanner';
+import { useListAutoScroll } from '../hooks/useListAutoScroll';
 import { animateTypewriter } from '../lib/typewriter';
 import { isSpeaking, speakText, stopSpeaking } from '../lib/tts';
 import {
@@ -200,7 +201,7 @@ export function WritingAssistantPanel({
   const [contextDetailUsage, setContextDetailUsage] = useState<ContextUsage | null>(null);
   const [contextHubOpen, setContextHubOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
-  const listRef = useRef<FlatList>(null);
+  const { listRef, onScroll, scrollToEnd, scrollToEndIfFollowing } = useListAutoScroll();
   const composeRef = useRef<TextInput>(null);
   const typewriterAbortRef = useRef<AbortController | null>(null);
   const visibleIndicesRef = useRef<number[]>([]);
@@ -221,13 +222,6 @@ export function WritingAssistantPanel({
     const timer = setTimeout(() => composeRef.current?.focus(), 320);
     return () => clearTimeout(timer);
   }, [autoFocusCompose]);
-
-  const scrollToEnd = useCallback((animated = true) => {
-    const run = () => listRef.current?.scrollToEnd({ animated });
-    run();
-    setTimeout(run, 120);
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 360);
-  }, []);
 
   const refreshContextUsage = useCallback(
     async (pending?: string): Promise<ContextUsage | null> => {
@@ -460,7 +454,7 @@ export function WritingAssistantPanel({
           setMessages((prev) =>
             prev.map((m) => (m.id === messageId ? { ...m, displayContent: visible } : m)),
           );
-          scrollToEnd();
+          scrollToEndIfFollowing();
         },
         { signal: ac.signal },
       );
@@ -470,7 +464,7 @@ export function WritingAssistantPanel({
         ),
       );
     },
-    [scrollToEnd],
+    [scrollToEndIfFollowing],
   );
 
   const runWritingDirectChat = useCallback(
@@ -1358,6 +1352,8 @@ export function WritingAssistantPanel({
         style={styles.list}
         data={messages}
         keyExtractor={(m) => m.id}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         renderItem={renderItem}

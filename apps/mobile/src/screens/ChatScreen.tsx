@@ -32,6 +32,7 @@ import {
   cancelAssistantFeedback,
 } from '../lib/assistantFeedback';
 import { isSpeaking, speakText, stopSpeaking } from '../lib/tts';
+import { useListAutoScroll } from '../hooks/useListAutoScroll';
 import { animateTypewriter } from '../lib/typewriter';
 import { CHAT_MAX_IMAGES_PER_MESSAGE, chatStoredUserContent } from '@shiren/shared';
 import { assetToBase64 } from '../lib/imageBase64';
@@ -121,7 +122,7 @@ export function ChatScreen() {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [bootstrapErrorHint, setBootstrapErrorHint] = useState<string | undefined>();
   useSuppressGlobalOfflineBanner(Boolean(bootstrapError));
-  const listRef = useRef<FlatList>(null);
+  const { listRef, onScroll, scrollToEnd, scrollToEndIfFollowing } = useListAutoScroll();
   const typewriterAbortRef = useRef<AbortController | null>(null);
   const visibleIndicesRef = useRef<number[]>([]);
   const viewabilityConfig = useRef({
@@ -135,13 +136,6 @@ export function ChatScreen() {
         .map((v) => v.index as number);
     },
   ).current;
-
-  const scrollToEnd = useCallback((animated = true) => {
-    const run = () => listRef.current?.scrollToEnd({ animated });
-    run();
-    setTimeout(run, 120);
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: false }), 360);
-  }, []);
 
   const refreshSessions = useCallback(async () => {
     const res = await api.listChatSessions();
@@ -314,7 +308,7 @@ export function ChatScreen() {
           setMessages((prev) =>
             prev.map((m) => (m.id === assistantId ? { ...m, displayContent: visible } : m)),
           );
-          scrollToEnd();
+          scrollToEndIfFollowing();
         },
         { signal: ac.signal },
       );
@@ -324,7 +318,7 @@ export function ChatScreen() {
         ),
       );
     },
-    [scrollToEnd],
+    [scrollToEndIfFollowing],
   );
 
   const handleCompactContext = useCallback(async () => {
@@ -880,6 +874,8 @@ export function ChatScreen() {
               style={styles.list}
               data={messages}
               keyExtractor={(m) => m.id}
+              onScroll={onScroll}
+              scrollEventThrottle={16}
               onViewableItemsChanged={onViewableItemsChanged}
               viewabilityConfig={viewabilityConfig}
               contentContainerStyle={
