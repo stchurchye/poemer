@@ -1,3 +1,7 @@
+export type ZenMuxChatImage = {
+    imageBase64: string;
+    mimeType?: string;
+};
 export declare class ZenMuxError extends Error {
     status?: number | undefined;
     constructor(message: string, status?: number | undefined);
@@ -8,6 +12,16 @@ export declare function zenmuxOcr(params: {
     imageBase64: string;
     mimeType?: string;
     purpose?: string;
+}): Promise<string>;
+/** 问答带图：在最后一轮用户话上附加图片（历史均为纯文本） */
+export declare function zenmuxChatWithImages(params: {
+    apiKey: string;
+    messages: Array<{
+        role: 'system' | 'user' | 'assistant';
+        content: string;
+    }>;
+    images: ZenMuxChatImage[];
+    imageNotice: string;
 }): Promise<string>;
 export declare function verifyZenMuxKey(apiKey: string): Promise<void>;
 //# sourceMappingURL=zenmuxClient.d.ts.map
