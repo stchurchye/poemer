@@ -12,6 +12,11 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { Document } from '@shiren/shared';
 import { formatRevisionTime } from '@shiren/shared';
 import { api } from '../lib/api';
+import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
+import {
+  useReconnectEffect,
+  useSuppressGlobalOfflineBanner,
+} from '../context/ApiConnectivityContext';
 import { appAlert } from '../lib/appAlert';
 import { filterVisibleDocuments } from '../lib/documentVisibility';
 import { duplicateDocument } from '../lib/duplicateDocument';
@@ -38,21 +43,30 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorHint, setErrorHint] = useState<string | undefined>();
+  useSuppressGlobalOfflineBanner(Boolean(error && documents.length === 0));
   const [creating, setCreating] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setErrorHint(undefined);
     try {
       const res = await api.listDocuments();
       setDocuments(filterVisibleDocuments(res.data));
     } catch (e) {
-      setError(String(e));
+      const err = apiLoadErrorText(e);
+      setError(err.message);
+      setErrorHint(err.hint);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  useReconnectEffect(() => {
+    void load();
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {
@@ -85,7 +99,8 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
       rememberDocument(docData);
       openDocument(docData.id);
     } catch (e) {
-      appAlert(zh.writing.newDocFailed, `${String(e)}\n\n${zh.writing.newDocApiHint}`);
+      const { message, hint } = apiErrorText(e);
+      appAlert(zh.writing.newDocFailed, hint ? `${message}\n\n${hint}` : message);
     } finally {
       setCreating(false);
     }
@@ -103,7 +118,8 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
         await load();
         openDocument(copy.id);
       } catch (e) {
-        appAlert(zh.writing.duplicateDocFailed, String(e));
+        const { message, hint } = apiErrorText(e);
+        appAlert(zh.writing.duplicateDocFailed, hint ? `${message}\n\n${hint}` : message);
       } finally {
         setDuplicatingId(null);
       }
@@ -120,7 +136,9 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
   }
 
   if (error && documents.length === 0) {
-    return <LoadErrorView message={error} onRetry={() => void load()} />;
+    return (
+      <LoadErrorView message={error} hint={errorHint} onRetry={() => void load()} />
+    );
   }
 
   return (

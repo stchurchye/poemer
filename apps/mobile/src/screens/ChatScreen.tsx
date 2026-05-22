@@ -16,7 +16,10 @@ import { appAlert } from '../lib/appAlert';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AssistantGuideKey, ChatSession, ContextSelection, ContextUsage } from '@shiren/shared';
 import { api } from '../lib/api';
-import { apiErrorText } from '../lib/apiError';
+import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
+import { useReconnectEffect, useSuppressGlobalOfflineBanner } from '../context/ApiConnectivityContext';
+import { LoadErrorView } from '../components/LoadErrorView';
+import { ReconnectBanner } from '../components/ReconnectBanner';
 import {
   getAssistantIntentAnalyzingLine,
   getAssistantThinkingLine,
@@ -45,6 +48,7 @@ import { CopyableMessageBubble } from '../components/CopyableMessageBubble';
 import { AssistantComposeDock } from '../components/AssistantComposeDock';
 import { PendingChatImagesStrip } from '../components/PendingChatImagesStrip';
 import { HeaderContextMeter } from '../components/HeaderContextMeter';
+import { LOCAL_FIRST_HIDE_CONTEXT_UI } from '../lib/localFirst';
 import { ChatIntentConfirmBar } from '../components/ChatIntentConfirmBar';
 import { ContextComposerModal } from '../components/ContextComposerModal';
 import { ContextUsageDetailModal } from '../components/ContextUsageDetailModal';
@@ -113,6 +117,10 @@ export function ChatScreen() {
     source: 'text' | 'voice';
   } | null>(null);
   const [pendingImages, setPendingImages] = useState<PickedChatImage[]>([]);
+  const [bootstrapLoading, setBootstrapLoading] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [bootstrapErrorHint, setBootstrapErrorHint] = useState<string | undefined>();
+  useSuppressGlobalOfflineBanner(Boolean(bootstrapError));
   const listRef = useRef<FlatList>(null);
   const typewriterAbortRef = useRef<AbortController | null>(null);
   const visibleIndicesRef = useRef<number[]>([]);
@@ -143,6 +151,11 @@ export function ChatScreen() {
 
   const refreshContextUsage = useCallback(
     async (pending?: string) => {
+      if (LOCAL_FIRST_HIDE_CONTEXT_UI) {
+        setContextUsage(null);
+        setContextUsageLoading(false);
+        return;
+      }
       const sessionId = session?.id;
       if (!sessionId) {
         setContextUsage(null);
@@ -185,12 +198,30 @@ export function ChatScreen() {
     [scrollToEnd],
   );
 
-  useEffect(() => {
-    (async () => {
+  const bootstrapChat = useCallback(async () => {
+    setBootstrapLoading(true);
+    setBootstrapError(null);
+    setBootstrapErrorHint(undefined);
+    try {
       const id = await ensureSession();
       await loadMessages(id);
-    })();
-  }, [ensureSession, loadMessages]);
+      await refreshContextUsage();
+    } catch (e) {
+      const err = apiLoadErrorText(e);
+      setBootstrapError(err.message);
+      setBootstrapErrorHint(err.hint);
+    } finally {
+      setBootstrapLoading(false);
+    }
+  }, [ensureSession, loadMessages, refreshContextUsage]);
+
+  useEffect(() => {
+    void bootstrapChat();
+  }, [bootstrapChat]);
+
+  useReconnectEffect(() => {
+    void bootstrapChat();
+  }, [bootstrapChat]);
 
   useEffect(() => {
     if (messages.length === 0) return;
@@ -302,6 +333,10 @@ export function ChatScreen() {
   );
 
   const handleCompactContext = useCallback(async () => {
+    if (LOCAL_FIRST_HIDE_CONTEXT_UI) {
+      appAlert('提示', zh.context.localFirstHidden);
+      return;
+    }
     const sessionId = session?.id ?? (await ensureSession());
     setCompactBusy(true);
     try {
@@ -711,7 +746,8 @@ export function ChatScreen() {
   const canReadReply = messages.some((m) => m.role === 'assistant' && m.status === 'done');
 
   const showHeaderContext =
-    contextUsage !== null || contextUsageLoading || session !== null;
+    !LOCAL_FIRST_HIDE_CONTEXT_UI &&
+    (contextUsage !== null || contextUsageLoading || session !== null);
 
   const composeFooter = (
     <View style={[styles.composeWrap, isTablet && styles.composeWrapTablet]}>
@@ -750,6 +786,18 @@ export function ChatScreen() {
     </View>
   );
 
+  if (bootstrapError && messages.length === 0 && !bootstrapLoading) {
+    return (
+      <View style={[styles.root, { paddingTop: insets.top }]}>
+        <LoadErrorView
+          message={bootstrapError}
+          hint={bootstrapErrorHint}
+          onRetry={() => void bootstrapChat()}
+        />
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={[styles.root, { paddingTop: insets.top }]}
@@ -759,6 +807,13 @@ export function ChatScreen() {
       <TabletFrame variant="full" style={styles.frame}>
         <View style={styles.shell}>
           <View style={styles.chatPane}>
+            {bootstrapError ? (
+              <ReconnectBanner
+                message={bootstrapError}
+                hint={bootstrapErrorHint}
+                onRetry={() => void bootstrapChat()}
+              />
+            ) : null}
             <View style={styles.headerRow}>
               <View style={styles.headerTitleRow}>
                 <Text
@@ -853,14 +908,17 @@ export function ChatScreen() {
         />
       </WritingAssistantSheet>
 
-      <ContextUsageDetailModal
-        visible={contextDetailUsage != null}
-        usage={contextDetailUsage}
-        onClose={() => setContextDetailUsage(null)}
-        onCompact={() => void handleCompactContext()}
-        compactBusy={compactBusy}
-      />
+      {!LOCAL_FIRST_HIDE_CONTEXT_UI ? (
+        <ContextUsageDetailModal
+          visible={contextDetailUsage != null}
+          usage={contextDetailUsage}
+          onClose={() => setContextDetailUsage(null)}
+          onCompact={() => void handleCompactContext()}
+          compactBusy={compactBusy}
+        />
+      ) : null}
 
+      {!LOCAL_FIRST_HIDE_CONTEXT_UI ? (
       <ContextComposerModal
         visible={composerOpen}
         source="chat"
@@ -873,6 +931,7 @@ export function ChatScreen() {
           void refreshContextUsage(input);
         }}
       />
+      ) : null}
     </KeyboardAvoidingView>
   );
 }

@@ -7,32 +7,36 @@
 
 **诗人** 是一款给长辈/家人用的 **中文写作 + 问问题** App：
 
-- **手机端**（Expo React Native）：大字号、朗读、按住说话、全中文。
-- **服务端**（Hono, 端口 `3921`）：文稿存储、改稿、问答、上下文组装、转发 DeepSeek / 阿里云 / ZenMux。
+- **手机端**（Expo React Native，**默认本地优先**）：文稿、版本、聊天存在本机 `shiren-store.json`；`api.ts` 门面全部走 `localApi.ts`。
+- **AI**：DeepSeek / ZenMux / 百炼由手机 **SecureStore 密钥直连**，不经过诗人 API。
+- **可选 legacy 服务端**（Hono, 端口 `3921`）：`apps/api` + `store.json`，供自建云部署；与当前默认 mobile 路径**并行**，无自动同步。
 
 **核心原则**：
 
-1. **数据在服务端**，不在手机里。手机是瘦客户端；唯一持久化是 `apps/api/data/store.json`（Docker 必须 volume，见 `docker-compose.yml`）。
+1. **默认数据在手机**，可导出 `.shiren.json` 换机；legacy 时数据在 `apps/api/data/store.json`（Docker volume）。
 2. **写作**与**问问题**两套对话、两套意图流程，不要混用 API。
 3. **改稿必须可追溯**：`Revision` + diff 预览 + 接受/拒绝 + 历史回滚。
-4. **发送前先意图确认**（问问题、写作小助手），用户点「确定」才真正调用主模型（写作改稿走 `confirm`）。
-5. **产品操作类问题**走 `mode=guide`（`assistantGuideRegistry.ts`），用 App 内弹窗引导，不要让 LLM 长篇回答设置步骤。
+4. **发送前先意图确认**（问问题、写作小助手），用户点「确定」才真正改稿（写作走 `confirm`）。
+5. **产品操作类问题**走 `mode=guide`（`assistantGuideRegistry.ts`），用 App 内弹窗引导。
+6. **上下文环 / 真压缩**：完整实现在 `apps/api` 的 `contextPipeline`；本地版 UI 隐藏，见 [local-first-data.md](./local-first-data.md#上下文编排-roadmap)。
 
 ## 2. Monorepo 结构
 
 ```
-apps/mobile/          Expo 54, React Navigation, 三 Tab
-apps/api/             Hono API, JSON 文件库
-packages/shared/      类型、diff、prompt、contextBudget、persona
-docs/                 部署说明、本文件、项目介绍
-docker-compose.yml    API 容器，volume → apps/api/data
+apps/mobile/          Expo 54；LocalStoreProvider、localApi、localVendors
+apps/api/             Hono API（legacy 可选）
+packages/shared/      类型、prompt、createLocalStore、dashscope/zenmux 客户端
+packages/engine/      手机端 AI 编排（意图/改稿/问问题，无 SecureStore）
+docs/                 local-first、deploy、本文件
+docker-compose.yml    仅 legacy API
 ```
 
 | 包 | 职责 |
 |----|------|
-| `@shiren/mobile` | UI、TTS、OCR、SecureStore 密钥、`EXPO_PUBLIC_API_URL` |
-| `@shiren/api` | REST、LLM 调用、`contextPipeline`、`db.ts` 内存+落盘 |
-| `@shiren/shared` | 跨端类型与 prompt，改 prompt 常只动这里 |
+| `@shiren/mobile` | UI、本地 JSON 库、SecureStore、`api` → `localApi` |
+| `@shiren/engine` | `analyzeWritingIntentLocal`、`analyzeChatIntentLocal` 等 |
+| `@shiren/api` | REST、`contextPipeline`、legacy `db.ts` |
+| `@shiren/shared` | 类型、prompt、store、厂商 HTTP；改 prompt 常只动这里 |
 
 注意：`apps/mobile/AGENTS.md` 是 **Expo 官方模板**（版本文档链接），不是本项目手册；**本项目 Agent 文档以 `docs/AGENTS.md` 为准**。
 
@@ -120,14 +124,47 @@ Provider 挂在 `App.tsx` 的 `FontPreferencesProvider`。
 - 小助手等待/回复：`apps/mobile/src/lib/assistantFeedback.ts`
 - 短等待：`getAssistantThinkingLine`；**28 秒后**换 `thinkingLongZh` / `thinkingLongYue` 并 **TTS 念出**（`WritingAssistantPanel`、`ChatScreen` 的 `setTimeout(28_000)` + `announceAssistantWaiting`）
 
-## 8. 部署与数据
+## 8. Android 开发与权限验收
+
+原生目录 `apps/mobile/android`、`ios` 由 `expo prebuild` 生成（已 gitignore），权限声明在 `apps/mobile/app.json`（`android.permissions`、`ios.infoPlist`、`plugins`），运行时统一走 Expo 模块：
+
+| 能力 | 代码入口 |
+|------|----------|
+| 选相册 / 拍照 | `src/lib/pickChatImage.ts` |
+| 按住说话 / 本地听写 | `src/lib/speech/localRecognition.ts`（Android 会触发 `prepareAndroidOfflinePack`） |
+| 保存章节长图 | `src/lib/chapterShare.ts` |
+| 应用内临时文件 | `src/lib/fsLegacy.ts`（私有 cache，不需存储权限） |
+
+**开发 API 地址**：Android 模拟器默认 `http://10.0.2.2:3921`（见 `src/lib/config.ts`）；真机用 `EXPO_PUBLIC_API_URL=http://电脑IP:3921`。
+
+**本地跑 Android**：
+
+```bash
+cd apps/mobile
+npx expo prebuild --platform android   # 首次或改 app.json 插件后
+npm run android                        # 或连接真机后 expo run:android --device
+```
+
+**EAS 内测包**：`npm run build:android`（preview APK）。打包前在 [eas.json](../apps/mobile/eas.json) 或 EAS 控制台设置 `EXPO_PUBLIC_API_URL`；详见 [deploy-aliyun.md](./deploy-aliyun.md)。
+
+**改权限后必测（真机或模拟器）**：
+
+1. 问问题 / 写作：选相册识图 → 拒绝后提示 `ocrPermissionDenied`
+2. 拍照识图 → 拒绝后提示 `cameraPermissionDenied`
+3. 按住说话 → 拒绝麦克风后提示权限文案；Android 首次注意离线中文语音包
+4. 写作「保存长图到相册」→ 拒绝后 `sharePermissionDenied`
+5. （可选）配置百炼密钥后云端听写：确认 `expo-av` 录音可用
+
+听写错误文案按平台分支：`src/lib/speech/errors.ts`（Android 指向应用权限 / Google 语音识别，非 Siri）。
+
+## 9. 部署与数据
 
 - 开发：`npm run dev:api` + `npm run dev:mobile`
 - Docker：`npm run docker:up`，数据 **`./apps/api/data/store.json`**
 - 腾讯云：API 常驻云上，手机 `EXPO_PUBLIC_API_URL` 指向公网 — [deploy-tencent-cloud.md](./deploy-tencent-cloud.md)
 - **无登录鉴权**；公网需安全组限 IP 或 Nginx + HTTPS
 
-## 9. 历史问题与已做决策（避免回归）
+## 10. 历史问题与已做决策（避免回归）
 
 | 问题 | 处理 |
 |------|------|
@@ -144,14 +181,14 @@ Provider 挂在 `App.tsx` 的 `FontPreferencesProvider`。
 | 产品引导 | `mode=guide` + `assistantGuideRegistry` |
 | `docs/AGENTS.md` 丢失 | 以 `docs/AGENTS.md` 为准，勿与 `apps/mobile/AGENTS.md`（Expo 模板）混淆 |
 
-## 10. 大文件（重构时优先拆）
+## 11. 大文件（重构时优先拆）
 
 - `WritingScreen.tsx` (~1500 行)
 - `WritingAssistantPanel.tsx` (~1100 行)
 - `ChatScreen.tsx` (~900 行)
 - `contextPipeline.ts` (~500 行)
 
-## 11. 改动检查清单
+## 12. 改动检查清单
 
 - [ ] `npm run build -w @shiren/shared`（改了 shared）
 - [ ] `npm run typecheck -w @shiren/mobile`
@@ -159,14 +196,14 @@ Provider 挂在 `App.tsx` 的 `FontPreferencesProvider`。
 - [ ] 改 prompt → 评估 mandarin + cantonese
 - [ ] 勿提交 `apps/api/data/store.json`、`.env`、密钥
 
-## 12. 明确未做 / 不要做
+## 13. 明确未做 / 不要做
 
 - 无自动化测试（改核心逻辑建议手测或补测）
 - 无多用户鉴权、无独立「手机同步协议」（API = 唯一数据源）
 - 无飞书导出（README 待接）
 - 不要未经用户要求 git commit / force push
 
-## 13. 文案单一来源
+## 14. 文案单一来源
 
 `apps/mobile/src/locales/zh-CN.ts` — UI 中文尽量只改这里。
 

@@ -4,15 +4,16 @@ import { zh } from '../locales/zh-CN';
 
 interface Props {
   message: string;
+  hint?: string;
   onRetry: () => void;
 }
 
-export function LoadErrorView({ message, onRetry }: Props) {
+export function LoadErrorView({ message, hint, onRetry }: Props) {
   return (
     <View style={styles.root}>
       <Text style={styles.title}>{zh.common.loadFailed}</Text>
       <Text style={styles.message}>{message}</Text>
-      <Text style={styles.hint}>{zh.writing.newDocApiHint}</Text>
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
       <Pressable style={styles.btn} onPress={onRetry}>
         <Text style={styles.btnText}>{zh.common.retry}</Text>
       </Pressable>

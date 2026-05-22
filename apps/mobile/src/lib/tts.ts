@@ -1,4 +1,5 @@
 import { appAlert } from './appAlert';
+import { networkErrorHint } from './apiConnectivity';
 import * as Speech from 'expo-speech';
 import { VoiceQuality, type SpeechOptions, type Voice } from 'expo-speech';
 import * as SecureStore from 'expo-secure-store';
@@ -201,8 +202,13 @@ function alertTtsFailure(e: unknown): void {
   if (err.code === 'DASHSCOPE_KEY_MISSING') {
     lines.push(zh.me.dashscopeNotConfigured);
   }
-  if (lines.length === 0 || lines[0]?.includes('连不上小助手服务')) {
-    lines.push('请确认本机已运行：npm run dev:api');
+  if (
+    lines.length === 0 ||
+    lines[0]?.includes('连不上') ||
+    err.code === 'NETWORK' ||
+    err.code === 'TIMEOUT'
+  ) {
+    lines.push(networkErrorHint());
   }
   appAlert('朗读没成功', lines.join('\n'));
 }

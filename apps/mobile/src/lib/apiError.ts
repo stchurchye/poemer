@@ -1,3 +1,9 @@
+import {
+  isConnectivityErrorCode,
+  networkErrorDetail,
+  networkErrorHint,
+} from './apiConnectivity';
+
 /** 从 API 抛出的 Error 里取出对用户友好的说明 */
 export function apiErrorText(e: unknown): { message: string; hint?: string } {
   if (e instanceof Error) {
@@ -8,17 +14,58 @@ export function apiErrorText(e: unknown): { message: string; hint?: string } {
       path?: string;
       status?: number;
     };
+
+    let message = err.message || '出了点小问题，请稍后再试';
+    let hint = err.hint;
+
+    if (
+      err.code?.startsWith('MODEL_') ||
+      err.code === 'DASHSCOPE_KEY_MISSING' ||
+      err.code === 'ZENMUX_KEY_MISSING' ||
+      err.code === 'VENDOR_NETWORK' ||
+      err.code === 'VENDOR_BAD_RESPONSE' ||
+      err.code === 'ASR_EMPTY'
+    ) {
+      return {
+        message,
+        hint,
+      };
+    }
+
+    if (isConnectivityErrorCode(err.code) && !hint) {
+      const detail = networkErrorDetail(err.code);
+      if (!message || message.includes('npm run dev:api') || message.includes('连不上')) {
+        message = detail.message;
+      }
+      hint = detail.hint;
+    }
+
     const debugTail =
       typeof __DEV__ !== 'undefined' &&
       __DEV__ &&
       err.requestId
         ? `（错误码 ${err.code ?? '?'} · 编号 ${err.requestId}${err.path ? ` · ${err.path}` : ''}）`
         : undefined;
-    const hintParts = [err.hint, debugTail].filter(Boolean);
+    const hintParts = [hint, debugTail].filter(Boolean);
     return {
-      message: err.message || '出了点小问题，请稍后再试',
+      message,
       hint: hintParts.length > 0 ? hintParts.join('\n') : undefined,
     };
   }
   return { message: '出了点小问题，请稍后再试' };
+}
+
+/** 列表/全屏加载失败时的一行说明 + 操作提示 */
+export function apiLoadErrorText(e: unknown): { message: string; hint: string } {
+  const { message, hint } = apiErrorText(e);
+  return {
+    message,
+    hint: hint ?? networkErrorHint(),
+  };
+}
+
+/** 弹窗：标题 + 友好说明（含网络 hint） */
+export function formatApiErrorAlertBody(e: unknown): string {
+  const { message, hint } = apiErrorText(e);
+  return hint ? `${message}\n\n${hint}` : message;
 }

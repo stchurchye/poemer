@@ -12,17 +12,55 @@
 
 ## Scope Check
 
-This is a large architectural change. Implement it in layers and keep each task shippable:
-
-1. Shared data bundle types and validation.
-2. Pure in-memory store with CRUD and revision behavior.
-3. Mobile file persistence, backup, export, import.
-4. Local API facade for non-AI flows.
-5. Local model/engine boundary for AI flows.
-6. UI migration and local-mode copy.
-7. Documentation and final verification.
+This is a large architectural change. **Do not treat “Task 13 passes” as “local-first complete.”** Ship in three phases; each phase has a user-visible done definition.
 
 Do not attempt automatic cloud sync, merge import, export encryption, or offline AI in this plan.
+
+### Product boundary (unchanged from spec)
+
+- **Local:** articles, revisions, chat, writing-assistant messages — on device, exportable as `.shiren.json` (no API keys in bundle).
+- **Network:** AI chat/writing, OCR/ASR/TTS when using vendor keys — direct to model vendors, **not** through 诗人 API.
+- **Legacy:** `apps/api` + `docs/deploy-aliyun.md` remain for optional future cloud/sync; **default mobile build is local-first** (no `EXPO_PUBLIC_API_URL` required).
+
+### Three implementation phases
+
+| Phase | Tasks | Done when (user-visible) |
+|-------|-------|---------------------------|
+| **1 — Local data** | 1, 2, 3, 4, 5, 6, 10 | App opens **without** `dev:api`; create/edit/save/restart keeps articles; export/import works |
+| **2 — Local AI + vendors** | 7, 8, 9a–9d | DeepSeek key + network → chat + writing assistant main path; keys verify locally; ASR/TTS/OCR wired |
+| **3 — Parity or honest downgrade** | 9e, 11, 12, 13 | Context ring/compact either real (`contextPipeline`) **or** hidden with copy; docs aligned; full manual matrix green |
+
+**Checkpoint:** Do **not** stop after Task 5 with AI methods still on HTTP — that is a broken half-state. Either finish Phase 1 (data only, AI buttons show “configure key / coming in phase 2”) or continue through Task 9.
+
+### API method coverage matrix
+
+Before routing each method in `api.ts`, mark it in this table (update as you implement):
+
+| `api` method | Phase | Implementation | Notes |
+|--------------|-------|----------------|-------|
+| `health` | 1 | `localApi` | `{ service: '诗人-local' }` |
+| `listDocuments` / `createDocument` / `getDocument` / `updateDocument` / `addChapter` | 1 | `localApi` → `LocalStore` | Filter `hiddenAt` in UI (`documentVisibility.ts`) |
+| `listRevisions` / `getRevision` / `acceptRevision` / `rejectRevision` | 1 | `localApi` | Match `db.ts` semantics (`acceptRevision` by `revisionId`) |
+| `rollback` | 1 | `localApi` | Mirror `documents.ts` POST rollback → `createRevision` with `source: 'rollback'` |
+| `getWritingAssistantMessages` | 1 | `localApi` | + `ensureWritingAssistantWelcome` on first open |
+| `listChatSessions` / `createChatSession` / `getChatMessages` | 1 | `localApi` | |
+| `getDeepSeekStatus` / `verifyDeepSeekKey` | 2 | SecureStore + `localModelClient` | No `/api/settings/*` |
+| `getZenMuxStatus` / `verifyZenMuxKey` | 2 | SecureStore + vendor verify | |
+| `getDashScopeStatus` / `verifyDashScopeKey` | 2 | SecureStore + vendor verify | |
+| `analyzeChatIntent` | 2 | `engine` + `localApi` | Must persist intent/confirm messages like server |
+| `sendChatMessage` | 2 | `engine` + `localApi` | Return shape: `user`, `assistant`, `contextUsage` (read `api.ts`) |
+| `compactChatSession` | 2/3 | `engine` or stub + UI hide | Used by `ChatScreen` |
+| `getChatContextUsage` / `getChatContextPreview` | 2/3 | `engine` or stub + UI hide | `ContextComposerModal` |
+| `analyzeWritingAssistantIntent` | 2 | `engine` + `localApi` | Full payload (excerpts, `contextSelection`, …) |
+| `sendWritingAssistantMessage` | 2 | `engine` + `localApi` | **Required** — `WritingAssistantPanel` |
+| `confirmWritingAssistant` | 2 | `engine` + `localApi` | |
+| `getWritingAssistantContextUsage` / `getWritingContextPreview` | 2/3 | `engine` or stub + UI hide | |
+| `aiSuggest` | 2 | `engine` + `localApi` | `DiffPreviewScreen` retry |
+| `ocrImage` | 2 | On-device OCR first; optional ZenMux direct | `recognizeImage.ts` |
+| `transcribeAudio` | 2 | DashScope direct from mobile | `cloudSpeech.ts` |
+| `synthesizeSpeech` | 2 | DashScope direct from mobile | `qwenTtsPlayer.ts` |
+
+**Engine MVP disclaimer (Phase 2):** first `@shiren/engine` version may **not** match server `contextPipeline` / `assistantGuideRegistry` / full intent JSON schemas. Document gaps in `docs/local-first-data.md` under “与云端版差异”. Phase 3 (Task 9e) closes or hides each gap.
 
 ---
 
@@ -35,9 +73,11 @@ Do not attempt automatic cloud sync, merge import, export encryption, or offline
 - Modify `packages/shared/src/index.ts`  
   Exports persisted-store types/helpers.
 - Create `packages/shared/src/store/createLocalStore.ts`  
-  Pure in-memory store factory with CRUD methods. This keeps core data behavior testable outside React Native.
+  **Migrated from** `apps/api/src/store/db.ts` (factory over `PersistedStore`, no module globals, no `persist()` inside). Do **not** rewrite a simplified store from scratch.
 - Create `packages/shared/src/store/createLocalStore.test.ts`  
-  Node test-runner coverage for create/list/update/revisions/chat/import validation.
+  Port critical behaviors: `emptyChapter(0, …)`, pending supersede, `acceptRevision` summary, `listRevisions` excludes rejected, welcome message, rollback revision.
+- Modify `apps/api/src/store/db.ts` (optional thin re-export)  
+  API server can delegate to `@shiren/shared` store later; not blocking mobile Phase 1.
 - Modify `packages/shared/package.json`  
   Adds a `test` script using `tsc` then `node --test dist/**/*.test.js`.
 
@@ -131,6 +171,12 @@ test('isPersistedStore accepts the empty store shape', () => {
 
 test('isPersistedStore rejects missing collections', () => {
   assert.equal(isPersistedStore({ documents: [] }), false);
+});
+
+test('isPersistedStore rejects document without id or chapters', () => {
+  const bad = createEmptyPersistedStore();
+  bad.documents.push({ title: 'x' } as never);
+  assert.equal(isPersistedStore(bad), false);
 });
 
 test('makeShirenExportBundle wraps store without SecureStore values', () => {
@@ -227,15 +273,36 @@ function isRecordOfArrays(value: unknown): value is Record<string, unknown[]> {
   );
 }
 
-export function isPersistedStore(value: unknown): value is PersistedStore {
+function isValidDocument(value: unknown): boolean {
   if (!isObject(value)) return false;
   return (
-    Array.isArray(value.documents) &&
-    Array.isArray(value.revisions) &&
-    Array.isArray(value.chatSessions) &&
-    isRecordOfArrays(value.chatMessages) &&
-    isRecordOfArrays(value.writingAssistantMessages)
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    Array.isArray(value.chapters) &&
+    value.chapters.every(
+      (ch) =>
+        isObject(ch) &&
+        typeof ch.id === 'string' &&
+        Array.isArray(ch.blocks) &&
+        ch.blocks.every(
+          (b) => isObject(b) && typeof b.id === 'string' && typeof b.content === 'string',
+        ),
+    )
   );
+}
+
+export function isPersistedStore(value: unknown): value is PersistedStore {
+  if (!isObject(value)) return false;
+  if (
+    !Array.isArray(value.documents) ||
+    !Array.isArray(value.revisions) ||
+    !Array.isArray(value.chatSessions) ||
+    !isRecordOfArrays(value.chatMessages) ||
+    !isRecordOfArrays(value.writingAssistantMessages)
+  ) {
+    return false;
+  }
+  return value.documents.every(isValidDocument);
 }
 
 export function makeShirenExportBundle(
@@ -294,12 +361,52 @@ git commit -m "feat(shared): add persisted store export bundle types"
 
 ---
 
-## Task 2: Pure LocalStore Core
+## Task 2: Migrate LocalStore from `apps/api/src/store/db.ts`
+
+**Goal:** One source of truth for data mutations. **Copy and refactor** `db.ts` into a pure `createLocalStore(initial, deps)` — do **not** use the simplified inline store from older drafts of this plan.
 
 **Files:**
 - Create: `packages/shared/src/store/createLocalStore.ts`
 - Create: `packages/shared/src/store/createLocalStore.test.ts`
 - Modify: `packages/shared/src/index.ts`
+- Reference: `apps/api/src/store/db.ts`, `apps/api/src/routes/documents.ts` (rollback)
+
+**Must port from `db.ts` (minimum):**
+
+| Source export | Notes |
+|---------------|-------|
+| `createDocument` | `emptyChapter(0, formatChapterTitle(0))`, `hiddenAt: null` |
+| `listDocuments` / `getDocument` / `updateDocument` | |
+| `saveDocumentContent` | Block content save path |
+| `addChapter` | `MAX_CHAPTERS`, `emptyChapter(nextIndex, …)` |
+| `createRevision` | `supersedePendingRevisionsForBlock`, `applyRevisionToDocument` |
+| `acceptRevision` / `rejectRevision` | `acceptRevision(revisionId)` — wrapper may add `documentId` for API shape |
+| `listRevisions` / `getRevision` | Excludes `rejected` |
+| `createChatSession` / `listChatSessions` / `getChatMessages` / `addChatMessage` | `lastQuestion` on list |
+| `updateChatSessionContext` / `updateChatSessionTitle` | For compact/title |
+| `updateDocumentContextFields` | Writing context summary fields |
+| `getWritingAssistantMessages` / `addWritingAssistantMessage` / `updateWritingAssistantMessage` / `getWritingAssistantMessage` | |
+| `ensureWritingAssistantWelcome` | |
+| `findBlock` | Used by revision apply |
+| *(new on LocalStore)* `rollback(documentId, revisionId)` | Same as API route: new revision with `source: 'rollback'`, snapshot from target rev |
+
+**Factory shape:**
+
+```ts
+export function createLocalStore(
+  initial: PersistedStore,
+  deps?: { now?: () => string; uuid?: () => string },
+): LocalStore {
+  // internal Maps or arrays — NO savePersistedStore() inside
+  return {
+    snapshot(): PersistedStore { /* clone full store */ },
+    replace(next: PersistedStore): void { /* replace in-memory */ },
+    // …all methods above
+  };
+}
+```
+
+Mobile `LocalStoreProvider` calls `saveLocalPersistedStore(store.snapshot())` after `markChanged` — persistence stays outside shared package.
 
 - [ ] **Step 1: Write failing LocalStore tests**
 
@@ -313,7 +420,7 @@ import {
   createLocalStore,
 } from '../index.js';
 
-test('createDocument creates one document with one empty chapter and block', () => {
+test('createDocument uses chapter order 0 like db.ts', () => {
   const store = createLocalStore(createEmptyPersistedStore(), {
     now: () => '2026-05-22T00:00:00.000Z',
     uuid: (() => {
@@ -325,11 +432,40 @@ test('createDocument creates one document with one empty chapter and block', () 
   const doc = store.createDocument('我的文章');
 
   assert.equal(doc.id, 'doc-1');
-  assert.equal(doc.title, '我的文章');
-  assert.equal(doc.chapters.length, 1);
-  assert.equal(doc.chapters[0]?.id, 'chapter-1');
-  assert.equal(doc.chapters[0]?.blocks[0]?.id, 'block-1');
-  assert.deepEqual(store.listDocuments().map((d) => d.id), ['doc-1']);
+  assert.equal(doc.chapters[0]?.order, 0);
+  assert.equal(doc.hiddenAt, null);
+});
+
+test('createRevision supersedes prior pending on same block', () => {
+  const store = createLocalStore(createEmptyPersistedStore(), {
+    now: () => '2026-05-22T00:00:00.000Z',
+    uuid: (() => {
+      let n = 0;
+      return () => `id-${++n}`;
+    })(),
+  });
+  const doc = store.createDocument('文');
+  const blockId = doc.chapters[0]!.blocks[0]!.id;
+  const r1 = store.createRevision({
+    documentId: doc.id,
+    blockId,
+    snapshot: 'a',
+    previousSnapshot: '',
+    summary: '1',
+    source: 'ai',
+    status: 'pending',
+  });
+  const r2 = store.createRevision({
+    documentId: doc.id,
+    blockId,
+    snapshot: 'b',
+    previousSnapshot: '',
+    summary: '2',
+    source: 'ai',
+    status: 'pending',
+  });
+  assert.equal(store.getRevision(r1.id)?.status, 'rejected');
+  assert.equal(store.getRevision(r2.id)?.status, 'pending');
 });
 
 test('updateDocument persists changes and updatedAt', () => {
@@ -354,8 +490,8 @@ test('acceptRevision applies snapshot to matching block', () => {
   const store = createLocalStore(createEmptyPersistedStore(), {
     now: () => '2026-05-22T00:00:00.000Z',
     uuid: (() => {
-      const ids = ['doc-1', 'chapter-1', 'block-1', 'rev-1'];
-      return () => ids.shift() ?? 'extra-id';
+      let n = 0;
+      return () => `id-${++n}`;
     })(),
   });
   const doc = store.createDocument('文章');
@@ -370,10 +506,10 @@ test('acceptRevision applies snapshot to matching block', () => {
     status: 'pending',
   });
 
-  const accepted = store.acceptRevision(doc.id, rev.id);
-  assert.equal(accepted.currentRevisionId, rev.id);
-  assert.equal(accepted.chapters[0]!.blocks[0]!.content, '修改后');
-  assert.equal(store.getRevision(doc.id, rev.id).status, 'accepted');
+  store.acceptRevision(rev.id);
+  const updated = store.getDocument(doc.id);
+  assert.equal(updated?.chapters[0]!.blocks[0]!.content, '修改后');
+  assert.equal(store.getRevision(rev.id)?.status, 'accepted');
 });
 
 test('chat messages are stored under their session', () => {
@@ -384,11 +520,8 @@ test('chat messages are stored under their session', () => {
       return () => ids.shift() ?? 'extra-id';
     })(),
   });
-  const session = store.createChatSession();
-  store.appendChatMessage(session.id, {
-    role: 'user',
-    content: '你好',
-  });
+  const session = store.createChatSession('新话题');
+  store.addChatMessage(session.id, 'user', '你好');
 
   assert.equal(store.listChatSessions().length, 1);
   assert.equal(store.getChatMessages(session.id)[0]?.content, '你好');
@@ -405,244 +538,20 @@ npm run test -w @shiren/shared
 
 Expected: fails because `createLocalStore` does not exist.
 
-- [ ] **Step 3: Implement LocalStore**
+- [ ] **Step 3: Implement by migrating `db.ts`**
 
-Create `packages/shared/src/store/createLocalStore.ts`:
+1. Copy `apps/api/src/store/db.ts` into `packages/shared/src/store/createLocalStore.ts`.
+2. Replace module-level `Map`s + `persist()` with `let data: PersistedStore` + `snapshot()` / `replace()`.
+3. Inject `now` / `uuid` via `deps` (default `new Date().toISOString()` / `crypto.randomUUID()`).
+4. Add `rollback(documentId, revisionId)` using the same logic as `documentsRouter.post('/:id/rollback')`.
+5. Keep `timezone: 'Asia/Shanghai'` on revisions as in `db.ts`.
+6. Export `LocalStore` as `ReturnType<typeof createLocalStore>`.
 
-```ts
-import type {
-  ChatMessage,
-  ChatSession,
-  Document,
-  PartialDeep,
-  Revision,
-  RevisionSource,
-  RevisionStatus,
-} from '../types.js';
-import { formatChapterTitle } from '../document/formatChapterTitle.js';
-import type { PersistedStore } from '../persistedStore.js';
+**Do not** add AI, HTTP, or file I/O in this module.
 
-type Clock = () => string;
-type IdFactory = () => string;
+- [ ] **Step 3b: Align `localApi` wrappers with store signatures**
 
-export type CreateRevisionInput = {
-  documentId: string;
-  blockId: string | null;
-  snapshot: string;
-  previousSnapshot: string | null;
-  summary: string;
-  source: RevisionSource;
-  status?: RevisionStatus;
-  suggestAction?: string;
-  suggestInstruction?: string;
-  suggestEvaluation?: string;
-  suggestRationale?: string;
-};
-
-export type AppendChatMessageInput = {
-  role: ChatMessage['role'];
-  content: string;
-};
-
-export type LocalStore = ReturnType<typeof createLocalStore>;
-
-function clone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function emptyDocument(uuid: IdFactory, now: string, title: string): Document {
-  const blockId = uuid();
-  return {
-    id: uuid(),
-    title,
-    chapters: [
-      {
-        id: uuid(),
-        title: formatChapterTitle(1),
-        order: 1,
-        blocks: [{ id: blockId, content: '', currentRevisionId: null }],
-        chapterSummary: '',
-      },
-    ],
-    globalSummary: '',
-    styleGuide: '',
-    currentRevisionId: null,
-    revisionCount: 0,
-    updatedAt: now,
-    createdAt: now,
-  };
-}
-```
-
-Then complete the implementation with these public methods:
-
-```ts
-export function createLocalStore(
-  initial: PersistedStore,
-  deps?: { now?: Clock; uuid?: IdFactory },
-) {
-  const now = deps?.now ?? (() => new Date().toISOString());
-  const uuid = deps?.uuid ?? (() => crypto.randomUUID());
-  let data = clone(initial);
-
-  function touchDocument(doc: Document): Document {
-    doc.updatedAt = now();
-    return doc;
-  }
-
-  function findDocument(id: string): Document {
-    const doc = data.documents.find((d) => d.id === id);
-    if (!doc) throw new Error('DOCUMENT_NOT_FOUND');
-    return doc;
-  }
-
-  return {
-    snapshot(): PersistedStore {
-      return clone(data);
-    },
-    replace(next: PersistedStore): void {
-      data = clone(next);
-    },
-    listDocuments(): Document[] {
-      return clone(data.documents).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    },
-    createDocument(title: string): Document {
-      const timestamp = now();
-      const blockId = uuid();
-      const doc: Document = {
-        id: uuid(),
-        title,
-        chapters: [
-          {
-            id: uuid(),
-            title: formatChapterTitle(1),
-            order: 1,
-            blocks: [{ id: blockId, content: '', currentRevisionId: null }],
-            chapterSummary: '',
-          },
-        ],
-        globalSummary: '',
-        styleGuide: '',
-        currentRevisionId: null,
-        revisionCount: 0,
-        updatedAt: timestamp,
-        createdAt: timestamp,
-      };
-      data.documents.push(doc);
-      return clone(doc);
-    },
-    getDocument(id: string): Document {
-      return clone(findDocument(id));
-    },
-    updateDocument(id: string, patch: Partial<Document>): Document {
-      const doc = findDocument(id);
-      Object.assign(doc, patch);
-      touchDocument(doc);
-      return clone(doc);
-    },
-    addChapter(documentId: string, title?: string): Document {
-      const doc = findDocument(documentId);
-      const order = doc.chapters.length + 1;
-      doc.chapters.push({
-        id: uuid(),
-        title: title?.trim() || formatChapterTitle(order),
-        order,
-        blocks: [{ id: uuid(), content: '', currentRevisionId: null }],
-        chapterSummary: '',
-      });
-      touchDocument(doc);
-      return clone(doc);
-    },
-    listRevisions(documentId: string): Revision[] {
-      return clone(data.revisions.filter((r) => r.documentId === documentId));
-    },
-    getRevision(documentId: string, revisionId: string): Revision {
-      const rev = data.revisions.find((r) => r.documentId === documentId && r.id === revisionId);
-      if (!rev) throw new Error('REVISION_NOT_FOUND');
-      return clone(rev);
-    },
-    createRevision(input: CreateRevisionInput): Revision {
-      const timestamp = now();
-      const rev: Revision = {
-        id: uuid(),
-        parentRevisionId: null,
-        timezone: 'UTC',
-        createdAt: timestamp,
-        status: input.status ?? 'pending',
-        ...input,
-      };
-      data.revisions.push(rev);
-      const doc = findDocument(input.documentId);
-      doc.revisionCount += 1;
-      touchDocument(doc);
-      return clone(rev);
-    },
-    acceptRevision(documentId: string, revisionId: string, editedSnapshot?: string): Document {
-      const doc = findDocument(documentId);
-      const rev = data.revisions.find((r) => r.documentId === documentId && r.id === revisionId);
-      if (!rev) throw new Error('REVISION_NOT_FOUND');
-      const snapshot = editedSnapshot ?? rev.snapshot;
-      for (const chapter of doc.chapters) {
-        for (const block of chapter.blocks) {
-          if (block.id === rev.blockId) {
-            block.content = snapshot;
-            block.currentRevisionId = rev.id;
-          }
-        }
-      }
-      rev.status = 'accepted';
-      doc.currentRevisionId = rev.id;
-      touchDocument(doc);
-      return clone(doc);
-    },
-    rejectRevision(documentId: string, revisionId: string): Revision {
-      const rev = data.revisions.find((r) => r.documentId === documentId && r.id === revisionId);
-      if (!rev) throw new Error('REVISION_NOT_FOUND');
-      rev.status = 'rejected';
-      return clone(rev);
-    },
-    createChatSession(): ChatSession {
-      const timestamp = now();
-      const session: ChatSession = {
-        id: uuid(),
-        title: '新话题',
-        updatedAt: timestamp,
-        createdAt: timestamp,
-        contextSummary: null,
-        contextSummaryUpToMessageId: null,
-        lastQuestion: null,
-      };
-      data.chatSessions.unshift(session);
-      data.chatMessages[session.id] = [];
-      return clone(session);
-    },
-    listChatSessions(): ChatSession[] {
-      return clone(data.chatSessions).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    },
-    getChatMessages(sessionId: string): ChatMessage[] {
-      return clone(data.chatMessages[sessionId] ?? []);
-    },
-    appendChatMessage(sessionId: string, input: AppendChatMessageInput): ChatMessage {
-      const session = data.chatSessions.find((s) => s.id === sessionId);
-      if (!session) throw new Error('CHAT_SESSION_NOT_FOUND');
-      const timestamp = now();
-      const message: ChatMessage = {
-        id: uuid(),
-        sessionId,
-        role: input.role,
-        content: input.content,
-        createdAt: timestamp,
-      };
-      data.chatMessages[sessionId] = [...(data.chatMessages[sessionId] ?? []), message];
-      session.updatedAt = timestamp;
-      if (input.role === 'user') session.lastQuestion = input.content;
-      return clone(message);
-    },
-  };
-}
-```
-
-Remove the unused `PartialDeep` import if TypeScript reports it. The exact method list may grow in later tasks, but do not add AI logic here.
+`localApi.acceptRevision(documentId, revisionId, edited?)` should call `store.acceptRevision(revisionId)` and then `store.getDocument(documentId)` for the return shape UI expects.
 
 - [ ] **Step 4: Export LocalStore**
 
@@ -664,7 +573,7 @@ Expected: tests pass.
 
 ```bash
 git add packages/shared/src/index.ts packages/shared/src/store/createLocalStore.ts packages/shared/src/store/createLocalStore.test.ts
-git commit -m "feat(shared): add pure local store"
+git commit -m "feat(shared): migrate local store from api db.ts"
 ```
 
 ---
@@ -674,6 +583,13 @@ git commit -m "feat(shared): add pure local store"
 **Files:**
 - Create: `apps/mobile/src/lib/localDataFiles.ts`
 - Modify: `apps/mobile/src/locales/zh-CN.ts`
+- Modify: `apps/mobile/package.json` (add `expo-document-picker` early — needed by Task 10)
+
+- [ ] **Step 0: Add import dependency**
+
+```bash
+cd apps/mobile && npx expo install expo-document-picker
+```
 
 - [ ] **Step 1: Define file operation contract**
 
@@ -840,10 +756,13 @@ export async function parseImportFile(uri: string): Promise<PersistedStore> {
   throw new Error('INVALID_SHIREN_DATA_PACKAGE');
 }
 
+/** Prefer `LocalStoreContext.replaceStore` — it updates in-memory + disk in one step. */
 export async function replaceLocalDataFromImport(store: PersistedStore): Promise<void> {
   await saveLocalPersistedStore(store);
 }
 ```
+
+`replaceStore` in `LocalStoreContext` should: (1) backup current `snapshot()` to `.bak` if non-empty, (2) `createLocalStore(next)`, (3) `saveLocalPersistedStore(next)`. Import UI calls **only** `replaceStore` — do not also call `replaceLocalDataFromImport` (avoids double write).
 
 - [ ] **Step 6: Add local-data copy**
 
@@ -917,6 +836,7 @@ import { appAlert } from '../lib/appAlert';
 import { zh } from '../locales/zh-CN';
 
 type LocalStoreContextValue = {
+  /** Live store instance — held in React state so consumers re-render on generation */
   store: LocalStore | null;
   ready: boolean;
   generation: number;
@@ -938,6 +858,7 @@ Append:
 export function LocalStoreProvider({ children }: { children: ReactNode }) {
   const storeRef = useRef<LocalStore | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [store, setStore] = useState<LocalStore | null>(null);
   const [ready, setReady] = useState(false);
   const [generation, setGeneration] = useState(0);
 
@@ -955,21 +876,22 @@ export function LocalStoreProvider({ children }: { children: ReactNode }) {
     }, SAVE_DEBOUNCE_MS);
   }, [persistNow]);
 
-  const replaceStore = useCallback(
-    async (next: PersistedStore) => {
-      storeRef.current = createLocalStore(next);
-      await saveLocalPersistedStore(next);
-      setGeneration((n) => n + 1);
-    },
-    [],
-  );
+  const replaceStore = useCallback(async (next: PersistedStore) => {
+    const instance = createLocalStore(next);
+    storeRef.current = instance;
+    setStore(instance);
+    await saveLocalPersistedStore(next);
+    setGeneration((n) => n + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       const result = await loadLocalPersistedStore();
       if (cancelled) return;
-      storeRef.current = createLocalStore(result.store);
+      const instance = createLocalStore(result.store);
+      storeRef.current = instance;
+      setStore(instance);
       setReady(true);
       setGeneration((n) => n + 1);
       if (result.recoveredFromBackup) {
@@ -985,7 +907,7 @@ export function LocalStoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
-      store: storeRef.current,
+      store,
       ready,
       generation,
       snapshot: () => storeRef.current?.snapshot() ?? null,
@@ -993,7 +915,7 @@ export function LocalStoreProvider({ children }: { children: ReactNode }) {
       replaceStore,
       markChanged,
     }),
-    [ready, generation, persistNow, replaceStore, markChanged],
+    [store, ready, generation, persistNow, replaceStore, markChanged],
   );
 
   return (
@@ -1048,10 +970,14 @@ git commit -m "feat(mobile): hydrate local store on startup"
 
 ## Task 5: Local API for Document and Revision Flows
 
+**Phase:** 1 — **Checkpoint:** after this task, non-AI flows must work with API server **stopped**. AI methods may still HTTP until Task 9; if shipping a build here, disable or gate AI buttons with `modelKeyMissing` copy.
+
 **Files:**
 - Create: `apps/mobile/src/lib/localApi.ts`
 - Modify: `apps/mobile/src/lib/api.ts`
 - Modify: screens only if method return shapes differ
+
+Update the **API coverage matrix** (Scope Check) for every method routed in this task.
 
 - [ ] **Step 1: Create local API wrapper shape**
 
@@ -1103,12 +1029,17 @@ export function createLocalApi(deps: {
     getRevision: async (documentId: string, revisionId: string) =>
       ok(store().getRevision(documentId, revisionId)),
     acceptRevision: async (documentId: string, revisionId: string, editedSnapshot?: string) => {
-      const doc = store().acceptRevision(documentId, revisionId, editedSnapshot);
+      store().acceptRevision(revisionId, editedSnapshot);
       deps.markChanged();
-      return ok(doc);
+      return ok(store().getDocument(documentId));
     },
     rejectRevision: async (documentId: string, revisionId: string) => {
-      const rev = store().rejectRevision(documentId, revisionId);
+      const rev = store().rejectRevision(revisionId);
+      deps.markChanged();
+      return ok(rev);
+    },
+    rollback: async (documentId: string, revisionId: string) => {
+      const rev = store().rollback(documentId, revisionId);
       deps.markChanged();
       return ok(rev);
     },
@@ -1193,9 +1124,11 @@ acceptRevision: (documentId: string, revisionId: string, editedSnapshot?: string
   local().acceptRevision(documentId, revisionId, editedSnapshot),
 rejectRevision: (documentId: string, revisionId: string) =>
   local().rejectRevision(documentId, revisionId),
+rollback: (documentId: string, revisionId: string) =>
+  local().rollback(documentId, revisionId),
 ```
 
-Leave AI/chat/assistant methods HTTP for this task only if they are not implemented yet. Do not add a placeholder comment in committed code; Task 9 replaces them with engine-backed local implementations.
+Leave AI/chat/assistant/vendor methods on HTTP **only until Task 9** — do not ship Phase 1 to family testers without either finishing Task 9 or gating AI entry points.
 
 - [ ] **Step 5: Typecheck and manual smoke**
 
@@ -1224,6 +1157,8 @@ git commit -m "feat(mobile): route document flows through local api"
 ---
 
 ## Task 6: Local Chat and Writing Assistant Message Persistence
+
+**Note:** Method names follow migrated `db.ts`: `addChatMessage`, `addWritingAssistantMessage`, `updateWritingAssistantMessage` — not `append*`.
 
 **Files:**
 - Modify: `packages/shared/src/store/createLocalStore.ts`
@@ -1261,65 +1196,11 @@ test('writing assistant messages are stored by document id', () => {
 npm run test -w @shiren/shared
 ```
 
-Expected: `appendWritingAssistantMessage` missing.
+Expected: writing assistant helpers missing if Step 3 of Task 2 skipped them.
 
-- [ ] **Step 3: Implement assistant message methods**
+- [ ] **Step 3: Confirm Task 2 already exported**
 
-Modify `createLocalStore.ts` imports to include `WritingAssistantMessage`.
-
-Add input type:
-
-```ts
-export type AppendWritingAssistantMessageInput = {
-  role: WritingAssistantMessage['role'];
-  content: string;
-  kind: WritingAssistantMessage['kind'];
-  pendingAction?: string;
-  pendingInstruction?: string;
-  confirmStatus?: WritingAssistantMessage['confirmStatus'];
-  revisionId?: string;
-  suggestEvaluation?: string;
-  suggestRationale?: string;
-  suggestAction?: string;
-  suggestUnderstandingScope?: WritingAssistantMessage['suggestUnderstandingScope'];
-};
-```
-
-Add methods:
-
-```ts
-getWritingAssistantMessages(documentId: string): WritingAssistantMessage[] {
-  return clone(data.writingAssistantMessages[documentId] ?? []);
-},
-appendWritingAssistantMessage(
-  documentId: string,
-  input: AppendWritingAssistantMessageInput,
-): WritingAssistantMessage {
-  findDocument(documentId);
-  const message: WritingAssistantMessage = {
-    id: uuid(),
-    documentId,
-    createdAt: now(),
-    ...input,
-  };
-  data.writingAssistantMessages[documentId] = [
-    ...(data.writingAssistantMessages[documentId] ?? []),
-    message,
-  ];
-  return clone(message);
-},
-updateWritingAssistantMessage(
-  documentId: string,
-  messageId: string,
-  patch: Partial<WritingAssistantMessage>,
-): WritingAssistantMessage {
-  const list = data.writingAssistantMessages[documentId] ?? [];
-  const message = list.find((m) => m.id === messageId);
-  if (!message) throw new Error('WRITING_ASSISTANT_MESSAGE_NOT_FOUND');
-  Object.assign(message, patch);
-  return clone(message);
-},
-```
+`getWritingAssistantMessages`, `addWritingAssistantMessage`, `updateWritingAssistantMessage`, `ensureWritingAssistantWelcome` must exist on `LocalStore` from the `db.ts` migration. If not, add them in Task 2 — do not duplicate divergent implementations here.
 
 - [ ] **Step 4: Add local API methods**
 
@@ -1334,8 +1215,8 @@ Add chat methods:
 
 ```ts
 listChatSessions: async () => ok(store().listChatSessions()),
-createChatSession: async () => {
-  const session = store().createChatSession();
+createChatSession: async (title?: string) => {
+  const session = store().createChatSession(title?.trim() || '新话题');
   deps.markChanged();
   return ok(session);
 },
@@ -1717,190 +1598,108 @@ git commit -m "feat(mobile): add direct DeepSeek model client"
 
 ---
 
-## Task 9: Local API AI Methods for Chat and Writing
+## Task 9: Local API — AI, Vendors, and Context (split)
+
+**Phase:** 2 (required for family use) + Phase 3 (context parity or UI downgrade).
 
 **Files:**
 - Modify: `apps/mobile/src/lib/localApi.ts`
 - Modify: `apps/mobile/src/lib/api.ts`
+- Modify: `apps/mobile/src/lib/cloudSpeech.ts`, `apps/mobile/src/lib/qwenTtsPlayer.ts`, `apps/mobile/src/lib/recognizeImage.ts` (vendor direct)
+- Modify: `packages/engine/src/*` as needed
 
-- [ ] **Step 1: Add chat send to local API**
+**Before coding:** read each method’s return type in `api.ts` and the caller in mobile (grep `api.<method>`). Update the coverage matrix as each sub-task lands.
 
-Modify `localApi.ts` imports:
+---
 
-```ts
-import {
-  analyzeWritingIntentLocal,
-  generateChatReply,
-  generateRevisionSnapshotLocal,
-} from '@shiren/engine';
-import { createDeepSeekModelClient } from './localModelClient';
-```
+### Task 9a — Chat intent + send
 
-Add method:
+- [ ] **Step 1: Add `analyzeChatIntent` to localApi**
 
-```ts
-sendChatMessage: async (
-  sessionId: string,
-  body: { content: string; images?: unknown[]; contextSelection?: unknown },
-) => {
-  const user = store().appendChatMessage(sessionId, {
-    role: 'user',
-    content: body.content,
-  });
-  const replyText = await generateChatReply(createDeepSeekModelClient(), {
-    session: store().listChatSessions().find((s) => s.id === sessionId)!,
-    history: store().getChatMessages(sessionId),
-    userText: body.content,
-  });
-  const assistant = store().appendChatMessage(sessionId, {
-    role: 'assistant',
-    content: replyText,
-  });
-  deps.markChanged();
-  return ok({
-    userMessage: user,
-    assistantMessage: assistant,
-    contextUsage: { usedTokens: 0, maxTokens: 0, ratio: 0, blocks: [] },
-  });
-},
-```
+Persist intent analysis as assistant messages (kinds / pending fields) matching server behavior enough for `ChatScreen` confirm UI. Use `@shiren/engine` (can start minimal JSON intent; document parity gap).
 
-Adjust property names to exactly match existing `api.sendChatMessage` return type. Read `api.ts` around the current chat methods before applying this step.
+- [ ] **Step 2: Add `sendChatMessage`**
 
-- [ ] **Step 2: Add writing assistant intent**
+Return shape must match `api.ts` exactly — typically `{ user, assistant, session?, contextUsage }`, **not** `userMessage` / `assistantMessage`. After model reply, `addChatMessage` for both roles; `markChanged`.
 
-Add local method:
+- [ ] **Step 3: Route in `api.ts`**
 
 ```ts
-analyzeWritingAssistantIntent: async (
-  documentId: string,
-  payload: {
-    content: string;
-    chapterTitle: string;
-    chapterContent: string;
-  },
-) => {
-  const result = await analyzeWritingIntentLocal(createDeepSeekModelClient(), payload);
-  return ok({
-    ...result,
-    contextUsage: { usedTokens: 0, maxTokens: 0, ratio: 0, blocks: [] },
-  });
-},
+analyzeChatIntent: (sessionId, body) => local().analyzeChatIntent(sessionId, body),
+sendChatMessage: (sessionId, body) => local().sendChatMessage(sessionId, body),
 ```
 
-- [ ] **Step 3: Add writing assistant confirm**
+- [ ] **Step 4: Commit** — `feat(mobile): local chat intent and send`
 
-Add local method:
+---
 
-```ts
-confirmWritingAssistant: async (
-  documentId: string,
-  body: {
-    messageId: string;
-    approved: boolean;
-    blockId: string;
-    chapterContent: string;
-    chapterTitle: string;
-    understandingScope: unknown;
-  },
-) => {
-  if (!body.approved) {
-    const assistant = store().appendWritingAssistantMessage(documentId, {
-      role: 'assistant',
-      content: '好的，您可以重新说说想怎么改。',
-      kind: 'notice',
-    });
-    deps.markChanged();
-    return ok({ assistant });
-  }
-  const pending = store()
-    .getWritingAssistantMessages(documentId)
-    .find((m) => m.id === body.messageId);
-  const action = pending?.pendingAction ?? '润色';
-  const instruction = pending?.pendingInstruction ?? pending?.content ?? '';
-  const generated = await generateRevisionSnapshotLocal(createDeepSeekModelClient(), {
-    action,
-    instruction,
-    chapterContent: body.chapterContent,
-  });
-  const revision = store().createRevision({
-    documentId,
-    blockId: body.blockId,
-    snapshot: generated.newText,
-    previousSnapshot: body.chapterContent,
-    summary: generated.comment,
-    source: 'ai',
-    status: 'pending',
-    suggestAction: action,
-    suggestInstruction: instruction,
-  });
-  const assistant = store().appendWritingAssistantMessage(documentId, {
-    role: 'assistant',
-    content: generated.comment,
-    kind: 'revision_ready',
-    revisionId: revision.id,
-    suggestAction: action,
-  });
-  deps.markChanged();
-  return ok({
-    assistant,
-    revision,
-    oldText: body.chapterContent,
-    newText: generated.newText,
-    comment: generated.comment,
-  });
-},
-```
+### Task 9b — Writing assistant full path
 
-- [ ] **Step 4: Route API methods**
+- [ ] **Step 1: `analyzeWritingAssistantIntent`** — full payload (excerpts, `contextSelection`, `directChat`, …); persist intent bubble via `updateWritingAssistantMessage` / `addWritingAssistantMessage`.
 
-Modify `api.ts` to route:
+- [ ] **Step 2: `sendWritingAssistantMessage`** — required by `WritingAssistantPanel.tsx`; not optional.
 
-```ts
-sendChatMessage: (
-  sessionId: string,
-  body: Parameters<ReturnType<typeof local>['sendChatMessage']>[1],
-) => local().sendChatMessage(sessionId, body),
-analyzeWritingAssistantIntent: (
-  documentId: string,
-  payload: Parameters<ReturnType<typeof local>['analyzeWritingAssistantIntent']>[1],
-) => local().analyzeWritingAssistantIntent(documentId, payload),
-confirmWritingAssistant: (
-  documentId: string,
-  body: Parameters<ReturnType<typeof local>['confirmWritingAssistant']>[1],
-) => local().confirmWritingAssistant(documentId, body),
-```
+- [ ] **Step 3: `confirmWritingAssistant`** — approved / rejected branches; `createRevision` on approve.
 
-Also route `getWritingAssistantContextUsage`, context preview, and chat context usage to local zero-usage placeholders if UI requires them:
+- [ ] **Step 4: `aiSuggest`** — `DiffPreviewScreen` retry path; engine generates new pending revision.
 
-```ts
-const emptyContextUsage = { usedTokens: 0, maxTokens: 0, ratio: 0, blocks: [] };
-```
+- [ ] **Step 5: Route all four in `api.ts`**
 
-- [ ] **Step 5: Typecheck and manual AI smoke**
+- [ ] **Step 6: Manual smoke** — intent → confirm → revision ready → accept; reject and re-ask.
 
-Run:
+- [ ] **Step 7: Commit** — `feat(mobile): local writing assistant flows`
 
-```bash
-npm run typecheck -w @shiren/mobile
-```
+---
 
-Manual smoke:
+### Task 9c — Settings keys (no poet API)
 
-1. Do not run `npm run dev:api`.
-2. Open App.
-3. Create or edit a local article.
-4. Fill DeepSeek key in settings.
-5. Ask one chat question.
-6. Ask writing assistant to polish a chapter.
-7. Verify messages/revision remain after App restart.
+- [ ] **Step 1: `getDeepSeekStatus` / `verifyDeepSeekKey`** — read SecureStore; verify via `localModelClient` ping.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 2: Same pattern for ZenMux and DashScope**
 
-```bash
-git add apps/mobile/src/lib/localApi.ts apps/mobile/src/lib/api.ts
-git commit -m "feat(mobile): run chat and writing AI locally"
-```
+- [ ] **Step 3: Route in `api.ts`; remove dependency on `/api/settings/*`**
+
+- [ ] **Step 4: Commit** — `feat(mobile): verify model keys locally`
+
+---
+
+### Task 9d — Media vendors (direct from mobile)
+
+- [ ] **Step 1: `transcribeAudio`** — implement in `cloudSpeech.ts` using DashScope HTTP + SecureStore key (extract shared fetch helper if needed).
+
+- [ ] **Step 2: `synthesizeSpeech`** — `qwenTtsPlayer.ts` direct DashScope.
+
+- [ ] **Step 3: `ocrImage`** — prefer existing on-device path in `ocrRecognize.ts`; only call ZenMux direct when configured.
+
+- [ ] **Step 4: Route in `api.ts`**
+
+- [ ] **Step 5: Commit** — `feat(mobile): direct vendor ASR TTS OCR`
+
+---
+
+### Task 9e — Context usage / compact (Phase 3)
+
+Choose **one** approach (document in `docs/local-first-data.md`):
+
+**A — Real:** port `contextPipeline` from `apps/api` into `@shiren/engine`; wire `getChatContextUsage`, `getChatContextPreview`, `compactChatSession`, writing context usage/preview.
+
+**B — Degrade:** hide `HeaderContextMeter`, context composer, and compact button in local mode; stub methods return empty usage only if something still calls them.
+
+- [ ] **Step 1: Implement A or B**
+
+- [ ] **Step 2: Commit** — `feat(mobile): context metering for local mode` or `refactor(mobile): hide context UI in local mode`
+
+---
+
+### Task 9 — Final integration (after 9a–9d)
+
+- [ ] **Step 1:** Grep `apps/mobile` for `api.` — every hit must be local, vendor-direct, or intentionally stubbed; **zero** calls to `API_BASE_URL` for product flows.
+
+- [ ] **Step 2:** `npm run typecheck` (root) + Phase 2 manual smoke (see Task 13).
+
+- [ ] **Step 3:** Commit any remaining routing — `feat(mobile): complete local-first api surface`
+
+**Reference:** `sendChatMessage` must return `{ user, assistant, session?, contextUsage }` per `api.ts` — not `userMessage` / `assistantMessage`. Use `store().addChatMessage` (migrated name from `db.ts`), not a nonexistent `appendChatMessage`.
 
 ---
 
@@ -1923,7 +1722,6 @@ import {
   exportLocalDataPackage,
   getLocalDataStatus,
   parseImportFile,
-  replaceLocalDataFromImport,
 } from '../lib/localDataFiles';
 import { useLocalStore } from '../context/LocalStoreContext';
 import { colors, typography } from '../theme/colors';
@@ -1980,7 +1778,6 @@ export function LocalDataCard() {
           onPress: () => {
             void (async () => {
               const store = await parseImportFile(picked.assets[0]!.uri);
-              await replaceLocalDataFromImport(store);
               await replaceStore(store);
               appAlert('好了', zh.me.localDataImportDone);
               await refresh();
@@ -2099,6 +1896,8 @@ git commit -m "feat(mobile): add local data export import"
 ---
 
 ## Task 11: Remove Server-Centric UI From Local Mode
+
+**Align with:** uncommitted / in-progress `ApiConnectivityContext`, `GlobalApiOfflineBanner`, `deploy-aliyun.md`. Local-first is default; cloud API URL is **legacy optional** (document under README “future cloud mode”), not the family install path.
 
 **Files:**
 - Modify: `apps/mobile/src/components/GlobalApiOfflineBanner.tsx`
@@ -2246,53 +2045,57 @@ git commit -m "docs: document local-first data mode"
 **Files:**
 - No new files expected.
 
-- [ ] **Step 1: Run shared tests**
+- [ ] **Step 1: Automated**
 
 ```bash
 npm run test -w @shiren/shared
+npm run typecheck
 ```
 
 Expected: PASS.
 
-- [ ] **Step 2: Run all typechecks**
+- [ ] **Step 2: Phase 1 — no API server**
 
-```bash
-npm run typecheck
-```
+Stop `dev:api`. Run `cd apps/mobile && npm run start`.
 
-Expected: all workspace typechecks pass.
+| # | Case | Expected |
+|---|------|----------|
+| 1 | Cold start | App opens; no global “连不上服务器” |
+| 2 | Create / edit article | Saves; survives force-quit + reopen |
+| 3 | Add chapter, rename title | Persists |
+| 4 | Accept / reject revision | Block content and history correct |
+| 5 | Rollback from history | New rollback revision; content restored |
+| 6 | Hide / restore document | `hiddenAt` respected in library |
+| 7 | Chat session + messages | Local list/messages persist |
+| 8 | Writing assistant thread | Messages persist; welcome on empty doc |
+| 9 | Export | `.shiren.json`; no key fields in JSON |
+| 10 | Import | Confirms; backs up; replaces data; keys still empty in bundle |
 
-- [ ] **Step 3: Verify app does not require API server**
+- [ ] **Step 3: Phase 2 — AI and vendors (network on)**
 
-Ensure no API server is running. Then run:
+| # | Case | Expected |
+|---|------|----------|
+| 11 | No DeepSeek key | Chat/writing show configure-key copy |
+| 12 | Chat: intent → confirm → send | Full bubble flow works |
+| 13 | Chat: guide path | Works or documented as Phase 3 gap |
+| 14 | Writing: intent → confirm → revision | Diff preview reachable |
+| 15 | Diff “再改一版” | New pending revision without API |
+| 16 | Verify keys in settings | No call to poet `/api/settings` |
+| 17 | Voice input (ASR) | Transcribes with DashScope key |
+| 18 | TTS play | Synthesizes with DashScope key |
+| 19 | Photo OCR | On-device or ZenMux path works |
+| 20 | Airplane mode | Articles visible; AI shows model network error |
 
-```bash
-cd apps/mobile
-npm run start
-```
+- [ ] **Step 4: Phase 3 — context (if 9e chose B, verify UI hidden)**
 
-Manual expected:
+| # | Case | Expected |
+|---|------|----------|
+| 21 | Context ring / compact | Real metrics **or** controls hidden + copy in settings |
+| 22 | Context composer preview | Works **or** hidden |
 
-- App opens.
-- Writing tab shows local document or creates one.
-- No global “连不上服务器” banner appears.
-- Basic editing persists after reload.
+- [ ] **Step 5: Coverage matrix audit**
 
-- [ ] **Step 4: Verify AI boundary**
-
-Manual expected:
-
-- With no DeepSeek key, AI action says to configure the key.
-- With DeepSeek key and network, chat reply works.
-- With network disabled, article data remains visible and AI action says model network failed.
-
-- [ ] **Step 5: Verify export/import**
-
-Manual expected:
-
-- Export share sheet opens with `.shiren.json`.
-- Exported JSON contains `store` and no API key strings.
-- Import replaces local data after confirmation.
+Every row in Scope Check API matrix marked implemented or explicitly deferred with doc link.
 
 - [ ] **Step 6: Final commit if needed**
 
@@ -2307,19 +2110,21 @@ git commit -m "fix: finalize local-first data mode"
 
 ## Self-Review Notes
 
-- Spec coverage:
-  - Local-first boundary: Tasks 7, 8, 11, 12.
+- **Phases:** 1 = Tasks 1–6, 10; 2 = 7–8, 9a–9d; 3 = 9e, 11–13.
+- **Spec coverage:**
+  - Local-first boundary: Tasks 7, 8, 9a–9d, 11, 12.
   - Local data package: Tasks 1, 3, 10.
-  - Startup hydration: Task 4.
-  - Local CRUD: Tasks 2, 5, 6.
-  - Direct model access: Tasks 7, 8, 9.
+  - Startup hydration: Task 4 (`store` in React state, not ref-only context).
+  - Local CRUD: Tasks 2 (migrate `db.ts`), 5, 6.
+  - Direct model access: Tasks 7, 8, 9a–9d.
   - Export/import no keys: Tasks 1, 10, 12.
-  - Future backend path: Task 12 docs; engine separation in Task 7.
-- Type consistency:
-  - `PersistedStore` is shared from `@shiren/shared`.
-  - `LocalStore` is pure and runtime-agnostic.
-  - `LocalApi` returns existing `{ ok, data, requestId }` shapes.
-- Known implementation caution:
-  - Current `api.ts` has many method signatures. Before replacing each AI method, read its exact return shape and match UI expectations.
-  - This plan intentionally starts with a minimal engine. Later work should improve prompt parity with the existing API.
+  - Future backend: Task 12; optional `apps/api` / `deploy-aliyun.md` not default.
+- **Deliberate MVP gaps (document in `docs/local-first-data.md`):**
+  - `@shiren/engine` v1 may lack `contextPipeline`, `assistantGuideRegistry`, server-grade intent JSON.
+  - Task 9e must either port context or hide UI — never leave a stuck-at-zero context ring without explanation.
+- **Do not:**
+  - Rewrite a simplified `createLocalStore` from scratch.
+  - Stop after Task 5 for family testers without AI gating or Task 9.
+  - Double-save on import (`replaceStore` only).
+- **Execution:** Use superpowers:subagent-driven-development per phase, or executing-plans for full run; update API matrix as you go.
 

@@ -32,7 +32,8 @@ import {
   announceAssistantWaiting,
   cancelAssistantFeedback,
 } from '../lib/assistantFeedback';
-import { apiErrorText } from '../lib/apiError';
+import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
+import { ReconnectBanner } from './ReconnectBanner';
 import { animateTypewriter } from '../lib/typewriter';
 import { isSpeaking, speakText, stopSpeaking } from '../lib/tts';
 import {
@@ -43,6 +44,7 @@ import {
 import { CopyableMessageBubble } from './CopyableMessageBubble';
 import { AssistantComposeDock } from './AssistantComposeDock';
 import { ContextComposerModal } from './ContextComposerModal';
+import { LOCAL_FIRST_HIDE_CONTEXT_UI } from '../lib/localFirst';
 import { AssistantLoadingRow, LoadingLabel } from './AssistantLoadingRow';
 import { MessageRichText } from './MessageRichText';
 import { AssistantGuidePromptBlock } from './AssistantGuidePromptBlock';
@@ -183,6 +185,7 @@ export function WritingAssistantPanel({
     source: 'text' | 'voice';
   } | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadErrorHint, setLoadErrorHint] = useState<string | undefined>();
   const [thinkingLine, setThinkingLine] = useState<string>(zh.writing.thinkingZh);
   const [thinkingLongLine, setThinkingLongLine] = useState<string>(zh.writing.thinkingLongZh);
   const [intentAnalyzingLine, setIntentAnalyzingLine] = useState<string>(
@@ -228,6 +231,11 @@ export function WritingAssistantPanel({
 
   const refreshContextUsage = useCallback(
     async (pending?: string): Promise<ContextUsage | null> => {
+      if (LOCAL_FIRST_HIDE_CONTEXT_UI) {
+        setContextUsage(null);
+        setContextUsageLoading(false);
+        return null;
+      }
       setContextUsageLoading(true);
       try {
         const res = await api.getWritingAssistantContextUsage(documentId, {
@@ -266,6 +274,7 @@ export function WritingAssistantPanel({
 
   const loadMessages = useCallback(async () => {
     setLoadError(null);
+    setLoadErrorHint(undefined);
     try {
       const res = await api.getWritingAssistantMessages(documentId);
       setMessages(res.data.map((m) => ({ ...m, status: 'done' as const })));
@@ -273,8 +282,9 @@ export function WritingAssistantPanel({
       void refreshContextUsage();
       void refreshRevisions();
     } catch (e) {
-      const { message, hint } = apiErrorText(e);
-      setLoadError(hint ? `${message}\n${hint}` : message);
+      const err = apiLoadErrorText(e);
+      setLoadError(err.message);
+      setLoadErrorHint(err.hint);
     }
   }, [documentId, scrollToEnd, refreshContextUsage, refreshRevisions]);
 
@@ -403,7 +413,10 @@ export function WritingAssistantPanel({
   }, [contextUsage, refreshContextUsage, input]);
 
   useEffect(() => {
-    if (!onHeaderContext || showTitle) return;
+    if (LOCAL_FIRST_HIDE_CONTEXT_UI || !onHeaderContext || showTitle) {
+      onHeaderContext?.(null);
+      return;
+    }
     onHeaderContext({
       ratio: contextUsage?.ratio ?? 0,
       loading: contextUsageLoading,
@@ -1349,9 +1362,11 @@ export function WritingAssistantPanel({
         keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           loadError ? (
-            <Text style={[styles.loadError, { fontSize: captionFontSize, lineHeight: bodyLineHeight }]}>
-              {loadError}
-            </Text>
+            <ReconnectBanner
+              message={loadError}
+              hint={loadErrorHint}
+              onRetry={() => void loadMessages()}
+            />
           ) : (
             <Text style={[styles.emptyHint, { fontSize: captionFontSize, lineHeight: bodyLineHeight }]}>
               {zh.writing.assistantEmpty}
@@ -1359,7 +1374,7 @@ export function WritingAssistantPanel({
           )
         }
       />
-      {contextDetailUsage ? (
+      {!LOCAL_FIRST_HIDE_CONTEXT_UI && contextDetailUsage ? (
         <Pressable
           style={styles.contextOverlay}
           onPress={() => setContextDetailUsage(null)}
@@ -1398,26 +1413,30 @@ export function WritingAssistantPanel({
         }
         imageActionLabel={zh.writing.recognizeImage}
       />
-      <ContextHubSheet
-        visible={contextHubOpen}
-        onClose={() => setContextHubOpen(false)}
-        onComposeContext={() => setComposerOpen(true)}
-      />
-      <ContextComposerModal
-        visible={composerOpen}
-        source="writing"
-        documentId={documentId}
-        chapterTitle={chapterContext.chapterTitle}
-        chapterContent={chapterContext.chapterContent}
-        documentExcerpt={chapterContext.documentExcerpt}
-        pendingText={input}
-        initialSelection={contextSelection}
-        onClose={() => setComposerOpen(false)}
-        onApply={(sel) => {
-          setContextSelection(sel);
-          void refreshContextUsage(input);
-        }}
-      />
+      {!LOCAL_FIRST_HIDE_CONTEXT_UI ? (
+        <>
+          <ContextHubSheet
+            visible={contextHubOpen}
+            onClose={() => setContextHubOpen(false)}
+            onComposeContext={() => setComposerOpen(true)}
+          />
+          <ContextComposerModal
+            visible={composerOpen}
+            source="writing"
+            documentId={documentId}
+            chapterTitle={chapterContext.chapterTitle}
+            chapterContent={chapterContext.chapterContent}
+            documentExcerpt={chapterContext.documentExcerpt}
+            pendingText={input}
+            initialSelection={contextSelection}
+            onClose={() => setComposerOpen(false)}
+            onApply={(sel) => {
+              setContextSelection(sel);
+              void refreshContextUsage(input);
+            }}
+          />
+        </>
+      ) : null}
     </View>
   );
 }

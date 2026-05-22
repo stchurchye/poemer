@@ -20,6 +20,7 @@ export const zh = {
     duplicateDocDone: '已复制为新文稿',
     duplicateDocFailed: '复制没成功',
     renameDocAction: '改名称',
+    /** @deprecated 请用 network.hint* + apiErrorText */
     newDocApiHint: '请先在电脑上打开终端，进入项目文件夹，运行：npm run dev:api',
     readMode: '开始朗读',
     stopReading: '停止朗读',
@@ -251,6 +252,25 @@ export const zh = {
   },
   me: {
     title: '设置',
+    localDataTitle: '本地数据',
+    localDataMode: '文章和聊天记录只存在本机',
+    localDataAiHint:
+      'AI 改稿、问问题、云端识图和云端听写需要联网访问模型服务（直连厂商，不经诗人服务器）',
+    localDataExport: '导出数据包',
+    localDataImport: '导入数据包',
+    localDataExportDone: '数据包已导出',
+    localDataExportFailed: '数据包导出失败',
+    localDataImportConfirmTitle: '导入数据包',
+    localDataImportConfirmMessage:
+      '导入后会替换本机现有文章和聊天记录。当前数据会先自动备份。',
+    localDataImportDone: '数据已导入',
+    localDataImportFailed: '数据包导入失败',
+    localDataRecovered: '已从备份恢复本地数据',
+    serverTitle: '服务器连接',
+    serverChecking: '正在检查…',
+    serverOk: '连接正常',
+    serverFail: '连不上服务器',
+    serverRetest: '重新检查',
     sideHint: '在这里设置小助手密钥、朗读声音，查看全部文稿。',
     docCount: '篇文稿',
     allDocs: '全部文稿',
@@ -378,6 +398,24 @@ export const zh = {
       primaryButton: '去切换话题',
     },
   },
+  network: {
+    unreachableLocal: '连不上小助手服务',
+    unreachableLan: '连不上小助手服务',
+    unreachableCloud: '连不上服务器',
+    timeout: '连接超时了，请检查网络后再试',
+    badResponse: '服务器暂时没响应，请稍后再试',
+    hintLocal:
+      '请确认电脑上已运行：npm run dev:api（或 docker compose up）。若用 Android 模拟器，服务地址一般为 10.0.2.2:3921。',
+    hintLan:
+      '请确认电脑与手机在同一 Wi‑Fi，且电脑上已运行 API。真机不能用 10.0.2.2，需用电脑局域网 IP 重新安装 App。',
+    hintCloud:
+      '请检查手机无线网或流量是否正常；若家人换了云服务器，需要重新安装带新地址的 App。',
+    serverAddress: (url: string) => `当前服务地址：${url}`,
+    checking: '正在检查服务器…',
+    connected: '服务器连接正常',
+    disconnected: '服务器连不上',
+    reconnectAction: '重新连接',
+  },
   common: {
     retry: '再试一次',
     confirm: '确定',
@@ -403,5 +441,7 @@ export const zh = {
     compactAction: '压缩上下文',
     compacting: '正在压缩…',
     hubTitle: '上下文',
+    localFirstHidden:
+      '本地优先版暂不显示上下文用量与编排；发送「压缩」也不会整理历史。完整功能将在后续版本提供。',
   },
 } as const;

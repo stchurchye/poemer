@@ -4,15 +4,21 @@ import { zh } from '../locales/zh-CN';
 
 interface Props {
   message: string;
+  hint?: string;
   onRetry: () => void;
 }
 
-export function ReconnectBanner({ message, onRetry }: Props) {
+export function ReconnectBanner({ message, hint, onRetry }: Props) {
   return (
     <View style={styles.root}>
-      <Text style={styles.text} numberOfLines={2}>
-        {message}
-      </Text>
+      <View style={styles.textCol}>
+        <Text style={styles.text}>{message}</Text>
+        {hint ? (
+          <Text style={styles.hint} numberOfLines={4}>
+            {hint}
+          </Text>
+        ) : null}
+      </View>
       <Pressable style={styles.btn} onPress={onRetry} hitSlop={8}>
         <Text style={styles.btnText}>{zh.common.retry}</Text>
       </Pressable>
@@ -34,7 +40,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  text: { flex: 1, fontSize: typography.caption, color: colors.text, lineHeight: typography.bodyLineHeight },
+  textCol: { flex: 1, gap: 4 },
+  text: { fontSize: typography.caption, fontWeight: '600', color: colors.text },
+  hint: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+    lineHeight: typography.bodyLineHeight,
+  },
   btn: {
     paddingHorizontal: 12,
     paddingVertical: 6,

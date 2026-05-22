@@ -1,4 +1,6 @@
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import type { ReactNode } from 'react';
+import { View } from 'react-native';
 import { WritingStack } from './WritingStack';
 import { ChatScreen } from '../screens/ChatScreen';
 import { MeStack } from './MeStack';
@@ -9,6 +11,34 @@ import { zh } from '../locales/zh-CN';
 import { useLayout } from '../theme/layout';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
+
+function TabShell({ children }: { children: ReactNode }) {
+  return <View style={{ flex: 1 }}>{children}</View>;
+}
+
+function WritingTabScreen() {
+  return (
+    <TabShell>
+      <WritingStack />
+    </TabShell>
+  );
+}
+
+function ChatTabScreen() {
+  return (
+    <TabShell>
+      <ChatScreen />
+    </TabShell>
+  );
+}
+
+function MeTabScreen() {
+  return (
+    <TabShell>
+      <MeStack />
+    </TabShell>
+  );
+}
 
 export function RootTabs() {
   const insets = useSafeAreaInsets();
@@ -33,17 +63,17 @@ export function RootTabs() {
     >
       <Tab.Screen
         name="WritingTab"
-        component={WritingStack}
+        component={WritingTabScreen}
         options={{ tabBarLabel: zh.tabs.writing }}
       />
       <Tab.Screen
         name="ChatTab"
-        component={ChatScreen}
+        component={ChatTabScreen}
         options={{ tabBarLabel: zh.tabs.chat }}
       />
       <Tab.Screen
         name="MeTab"
-        component={MeStack}
+        component={MeTabScreen}
         options={{
           tabBarLabel: zh.tabs.me,
           headerShown: !isTablet,

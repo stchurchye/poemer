@@ -26,6 +26,7 @@ import { colors, typography } from '../theme/colors';
 import { useFontPreferences } from '../theme/FontPreferencesContext';
 import type { FontSizePreset } from '../theme/fontPresets';
 import { useLayout } from '../theme/layout';
+import { LocalDataCard } from '../components/LocalDataCard';
 import { zh } from '../locales/zh-CN';
 
 export function MeScreen() {
@@ -132,6 +133,8 @@ export function MeScreen() {
     >
       <TabletFrame variant="settings" scrollChild>
         <Text style={[styles.title, isTablet && styles.titleTablet]}>{zh.me.title}</Text>
+
+        <LocalDataCard />
 
         <Pressable
           style={[styles.menuRow, isTablet && styles.menuRowTablet]}
@@ -252,6 +255,18 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionTablet: { fontSize: typography.button, marginBottom: 16 },
+  serverStatus: { color: colors.text, fontWeight: '600', marginBottom: 8 },
+  serverUrl: { color: colors.textMuted, lineHeight: typography.bodyLineHeight, marginBottom: 12 },
+  serverRetestBtn: {
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  serverRetestText: { color: colors.primary, fontWeight: '600' },
   menuRow: {
     flexDirection: 'row',
     alignItems: 'center',

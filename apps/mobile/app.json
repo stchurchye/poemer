@@ -17,6 +17,7 @@
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "需要听您说话，用来转成文字",
         "NSMicrophoneUsageDescription": "需要录音，用来听您说话",
+        "NSCameraUsageDescription": "需要打开相机拍照，识别其中的文字录入章节",
         "NSPhotoLibraryAddUsageDescription": "需要把章节长图保存到相册，方便您分享到微信或小红书",
         "NSPhotoLibraryUsageDescription": "需要访问相册以保存章节长图、选择照片识图录入文字",
         "NSAppTransportSecurity": {
@@ -32,6 +33,7 @@
         "backgroundColor": "#faf6f0"
       },
       "permissions": [
+        "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -41,6 +43,7 @@
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO"
       ],
+      "usesCleartextTraffic": true,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
@@ -58,7 +61,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "需要访问相册以选择照片，识别其中的文字录入章节"
+          "photosPermission": "需要访问相册以选择照片，识别其中的文字录入章节",
+          "cameraPermission": "需要打开相机拍照，识别其中的文字录入章节"
         }
       ],
       "expo-speech-recognition",

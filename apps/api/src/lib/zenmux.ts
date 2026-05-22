@@ -1,20 +1,15 @@
 import {
   asrPromptForDialect,
+  ZenMuxError,
+  zenmuxOcr,
+  verifyZenMuxKey,
   ZENMUX_BASE_URL,
-  ZENMUX_MODEL_FLASH_LITE,
   ZENMUX_MODEL_CHAT_IMAGES,
+  ZENMUX_MODEL_FLASH_LITE,
   type ReplyDialect,
 } from '@shiren/shared';
 
-export class ZenMuxError extends Error {
-  constructor(
-    message: string,
-    public status?: number,
-  ) {
-    super(message);
-    this.name = 'ZenMuxError';
-  }
-}
+export { ZenMuxError, zenmuxOcr, verifyZenMuxKey };
 
 type ZenMuxTextPart = { type: 'text'; text: string };
 type ZenMuxImagePart = { type: 'image_url'; image_url: { url: string } };
@@ -78,17 +73,6 @@ export function hasZenMuxKeyConfigured(headerKey?: string | null): boolean {
   return Boolean(headerKey?.trim() || process.env.ZENMUX_API_KEY?.trim());
 }
 
-export async function verifyZenMuxKey(apiKey: string): Promise<boolean> {
-  await zenmuxChat(
-    apiKey,
-    [
-      { role: 'user', content: '请只回复：好的' },
-    ],
-    { maxTokens: 16, temperature: 0 },
-  );
-  return true;
-}
-
 function imageDataUrl(imageBase64: string, mimeType?: string): string {
   const mime = mimeType?.trim() || 'image/jpeg';
   return `data:${mime};base64,${imageBase64.replace(/\s/g, '')}`;
@@ -132,31 +116,6 @@ export async function zenmuxChatWithImages(params: {
   });
 }
 
-/** 识图识字（Gemini 多模态） */
-export async function zenmuxOcr(params: {
-  apiKey: string;
-  imageBase64: string;
-  mimeType?: string;
-  purpose?: string;
-}): Promise<string> {
-  const dataUrl = imageDataUrl(params.imageBase64, params.mimeType);
-  const instructions = params.purpose?.trim() ?? '';
-
-  return zenmuxChat(params.apiKey, [
-    {
-      role: 'user',
-      content: [
-        {
-          type: 'text',
-          text: `${instructions ? `${instructions}\n\n` : ''}请识别图片中的中文或英文文字，按阅读顺序逐字转录原文。保留段落换行。不要纠正错别字、不要润色、不要补充或删减内容。不要加解释、标题或 markdown。若图中没有文字，只回复：（未识别到文字）`,
-        },
-        { type: 'image_url', image_url: { url: dataUrl } },
-      ],
-    },
-  ]);
-}
-
-/** 语音转文字（Gemini 多模态） */
 function normalizeAudioFormat(format: string): string {
   const f = format.trim().toLowerCase() || 'mp4';
   if (f === 'm4a' || f === 'aac') return 'mp4';
@@ -164,6 +123,7 @@ function normalizeAudioFormat(format: string): string {
   return f;
 }
 
+/** 语音转文字（Gemini 多模态，API 路径备用） */
 export async function zenmuxTranscribe(params: {
   apiKey: string;
   audioBase64: string;
@@ -179,14 +139,8 @@ export async function zenmuxTranscribe(params: {
       {
         role: 'user',
         content: [
-          {
-            type: 'text',
-            text: asrPromptForDialect(params.dialect),
-          },
-          {
-            type: 'input_audio',
-            input_audio: { data, format },
-          },
+          { type: 'text', text: asrPromptForDialect(params.dialect) },
+          { type: 'input_audio', input_audio: { data, format } },
         ],
       },
     ],

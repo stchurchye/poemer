@@ -63,7 +63,11 @@ import {
   type PickedOcrImage,
 } from '../lib/assistantOcrSession';
 import { recognizeImageFromAsset } from '../lib/recognizeImage';
-import { apiErrorText } from '../lib/apiError';
+import { apiErrorText, apiLoadErrorText, formatApiErrorAlertBody } from '../lib/apiError';
+import {
+  useReconnectEffect,
+  useSuppressGlobalOfflineBanner,
+} from '../context/ApiConnectivityContext';
 import { promptText } from '../lib/promptText';
 import {
   WritingAssistantSheet,
@@ -142,11 +146,14 @@ export function WritingScreen({ navigation, route }: Props) {
   const { bodyFontSize, bodyLineHeight } = useTypography('article');
   const [initLoading, setInitLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
+  const [initErrorHint, setInitErrorHint] = useState<string | undefined>();
   const [creating, setCreating] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(route.params?.documentId ?? null);
   const [doc, setDoc] = useState<Document | null>(null);
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+  const [docErrorHint, setDocErrorHint] = useState<string | undefined>();
+  useSuppressGlobalOfflineBanner(Boolean(initError || docError));
   const [toast, setToast] = useState(route.params?.toast);
   const [bodyDraft, setBodyDraft] = useState('');
   const [saving, setSaving] = useState(false);
@@ -207,6 +214,7 @@ export function WritingScreen({ navigation, route }: Props) {
   const loadDocumentsInit = useCallback(async () => {
     setInitLoading(true);
     setInitError(null);
+    setInitErrorHint(undefined);
     try {
       const res = await api.listDocuments();
       const visible = filterVisibleDocuments(res.data);
@@ -228,15 +236,22 @@ export function WritingScreen({ navigation, route }: Props) {
       if (cached.length > 0) {
         setActiveId((current) => current ?? cached[0]?.id ?? null);
       }
-      setInitError(String(e));
+      const err = apiLoadErrorText(e);
+      setInitError(err.message);
+      setInitErrorHint(err.hint);
     } finally {
       setInitLoading(false);
     }
   }, [route.params?.documentId]);
 
+  useReconnectEffect(() => {
+    void loadDocumentsInit();
+  }, [loadDocumentsInit]);
+
   const loadDoc = useCallback(async (id: string) => {
     setDocLoading(true);
     setDocError(null);
+    setDocErrorHint(undefined);
     try {
       const res = await api.getDocument(id);
       rememberDocument(res.data);
@@ -249,11 +264,17 @@ export function WritingScreen({ navigation, route }: Props) {
       } else {
         setDoc((prev) => (prev?.id === id ? prev : null));
       }
-      setDocError(String(e));
+      const err = apiLoadErrorText(e);
+      setDocError(err.message);
+      setDocErrorHint(err.hint);
     } finally {
       setDocLoading(false);
     }
   }, []);
+
+  useReconnectEffect(() => {
+    if (activeId) void loadDoc(activeId);
+  }, [activeId, loadDoc]);
 
   useEffect(() => {
     void loadDocumentsInit();
@@ -452,7 +473,7 @@ export function WritingScreen({ navigation, route }: Props) {
       setBodyDraft('');
       setSuggestionRevision(null);
     } catch (e) {
-      appAlert('添加章节没成功', String(e));
+      appAlert('添加章节没成功', formatApiErrorAlertBody(e));
     } finally {
       setAddingChapter(false);
     }
@@ -557,7 +578,7 @@ export function WritingScreen({ navigation, route }: Props) {
       const res = await api.updateDocument(doc.id, { chapters });
       setDoc(res.data);
     } catch (e) {
-      appAlert('保存没成功', String(e));
+      appAlert('保存没成功', formatApiErrorAlertBody(e));
     } finally {
       setSaving(false);
     }
@@ -584,7 +605,7 @@ export function WritingScreen({ navigation, route }: Props) {
       rememberDocument(res.data);
       setDoc(res.data);
     } catch (e) {
-      appAlert('改名没成功', String(e));
+      appAlert('改名没成功', formatApiErrorAlertBody(e));
     }
   };
 
@@ -610,7 +631,7 @@ export function WritingScreen({ navigation, route }: Props) {
       rememberDocument(res.data);
       setDoc(res.data);
     } catch (e) {
-      appAlert('章节改名没成功', String(e));
+      appAlert('章节改名没成功', formatApiErrorAlertBody(e));
     }
   };
 
@@ -726,7 +747,7 @@ export function WritingScreen({ navigation, route }: Props) {
           }
           await runOcrRecognition(picked);
         } catch (e) {
-          appAlert('识图没成功', String(e));
+          appAlert('识图没成功', formatApiErrorAlertBody(e));
           setOcrBusy(false);
         }
       })();
@@ -821,7 +842,7 @@ export function WritingScreen({ navigation, route }: Props) {
       setSuggestionRevision(null);
       beginOcrPlacement({ flexible: true }, 0);
     } catch (e) {
-      appAlert('添加章节没成功', String(e));
+      appAlert('添加章节没成功', formatApiErrorAlertBody(e));
       setOcrInsertHowVisible(true);
     } finally {
       setAddingChapter(false);
@@ -855,7 +876,8 @@ export function WritingScreen({ navigation, route }: Props) {
       setSpeaking(false);
       beginOcrPlacement({ flexible: true }, first?.blocks[0]?.content.length ?? 0);
     } catch (e) {
-      appAlert(zh.writing.newDocFailed, `${String(e)}\n\n${zh.writing.newDocApiHint}`);
+      const { message, hint } = apiErrorText(e);
+      appAlert(zh.writing.newDocFailed, hint ? `${message}\n\n${hint}` : message);
       setOcrInsertHowVisible(true);
     } finally {
       setCreating(false);
@@ -908,7 +930,7 @@ export function WritingScreen({ navigation, route }: Props) {
       }
       finishOcrInsert(zh.writing.ocrInsertDone);
     } catch (e) {
-      appAlert('插入没成功', String(e));
+      appAlert('插入没成功', formatApiErrorAlertBody(e));
     }
   };
 
@@ -971,10 +993,15 @@ export function WritingScreen({ navigation, route }: Props) {
       ) : null}
 
       {initError && !activeId ? (
-        <LoadErrorView message={initError} onRetry={() => void loadDocumentsInit()} />
+        <LoadErrorView
+          message={initError}
+          hint={initErrorHint}
+          onRetry={() => void loadDocumentsInit()}
+        />
       ) : docError && !doc ? (
         <LoadErrorView
           message={docError}
+          hint={docErrorHint}
           onRetry={() => {
             if (activeId) void loadDoc(activeId);
             else void loadDocumentsInit();
@@ -991,6 +1018,7 @@ export function WritingScreen({ navigation, route }: Props) {
           {initError || docError ? (
             <ReconnectBanner
               message={initError ?? docError ?? ''}
+              hint={initErrorHint ?? docErrorHint}
               onRetry={() => {
                 void loadDocumentsInit();
                 if (activeId) void loadDoc(activeId);

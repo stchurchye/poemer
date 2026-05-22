@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { deleteFileQuietly, readFileBase64 } from './fsLegacy';
 import { api } from './api';
 import { clientLog } from './clientLog';
@@ -12,6 +13,13 @@ let avModule: ExpoAv | null = null;
 let avLoadError: Error | null = null;
 let recording: Recording | null = null;
 
+function nativeModuleRebuildHint(): string {
+  if (Platform.OS === 'android') {
+    return '云端听写需要重新编译 App（expo-av 原生模块未安装）。请在 apps/mobile 执行：npm run android，或使用 EAS 重新安装开发包';
+  }
+  return '云端听写需要重新编译 App（expo-av 原生模块未安装）。请在 apps/mobile 执行：npx pod-install && npm run ios:ipad';
+}
+
 async function getAv(): Promise<ExpoAv> {
   if (avModule) return avModule;
   if (avLoadError) throw avLoadError;
@@ -20,11 +28,7 @@ async function getAv(): Promise<ExpoAv> {
     return avModule;
   } catch (e) {
     avLoadError =
-      e instanceof Error
-        ? e
-        : new Error(
-            '云端听写需要重新编译 App（expo-av 原生模块未安装）。请在 apps/mobile 执行：npx pod-install && npm run ios:ipad',
-          );
+      e instanceof Error ? e : new Error(nativeModuleRebuildHint());
     throw avLoadError;
   }
 }

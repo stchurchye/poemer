@@ -1,3 +1,9 @@
+import {
+  networkErrorDetail,
+  notifyApiReachable,
+  notifyApiUnreachable,
+} from './apiConnectivity';
+
 export type ApiRequestOptions = RequestInit & {
   timeoutMs?: number;
   /** 失败后额外重试次数，默认 LLM 为 2、其它为 0 */
@@ -37,7 +43,9 @@ function defaultRetries(path: string): number {
     return 2;
   }
   if (path.includes('/asr') || path.includes('/ocr')) return 1;
-  return 0;
+  if (path === '/health') return 0;
+  if (path.includes('/api/documents') || path.includes('/api/chat')) return 2;
+  return 1;
 }
 
 function shouldRetry(err: unknown, status?: number): boolean {
@@ -81,10 +89,11 @@ export async function fetchJsonWithRetry<T>(
       try {
         json = await res.json();
       } catch {
+        const bad = networkErrorDetail('BAD_RESPONSE');
         throw new ApiRequestError(
-          `服务无响应（${res.status}），请确认 API 已启动`,
+          `${bad.message}（${res.status}）`,
           'BAD_RESPONSE',
-          undefined,
+          bad.hint,
           res.status,
           res.status >= 500,
         );
@@ -114,6 +123,7 @@ export async function fetchJsonWithRetry<T>(
         throw apiErr;
       }
 
+      notifyApiReachable();
       return {
         ok: true,
         data: json.data as T,
@@ -129,21 +139,15 @@ export async function fetchJsonWithRetry<T>(
         e instanceof ApiRequestError
           ? e
           : e instanceof Error && e.name === 'AbortError'
-            ? new ApiRequestError(
-                '请求超时了，请检查网络后点「再试一次」',
-                'TIMEOUT',
-                undefined,
-                undefined,
-                true,
-              )
+            ? (() => {
+                const t = networkErrorDetail('TIMEOUT');
+                return new ApiRequestError(t.message, 'TIMEOUT', t.hint, undefined, true);
+              })()
             : e instanceof TypeError
-              ? new ApiRequestError(
-                  '连不上服务，请确认已运行 npm run dev:api',
-                  'NETWORK',
-                  undefined,
-                  undefined,
-                  true,
-                )
+              ? (() => {
+                  const n = networkErrorDetail('NETWORK');
+                  return new ApiRequestError(n.message, 'NETWORK', n.hint, undefined, true);
+                })()
               : e;
 
       if (
@@ -153,6 +157,10 @@ export async function fetchJsonWithRetry<T>(
         await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
         lastError = wrapped;
         continue;
+      }
+
+      if (wrapped instanceof ApiRequestError && (wrapped.code === 'NETWORK' || wrapped.code === 'TIMEOUT')) {
+        notifyApiUnreachable();
       }
 
       throw wrapped instanceof ApiRequestError ? wrapped : e;
