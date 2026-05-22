@@ -27,6 +27,22 @@ export async function getChatIntentUnderstandSpeakPrefix(): Promise<string> {
     : zh.chat.intentUnderstandSpeakPrefixZh;
 }
 
+/** 问问题意图确认：朗读理解后的按钮说明（仅 TTS） */
+export async function getChatIntentConfirmActionHint(): Promise<string> {
+  return (await isCantonese())
+    ? zh.chat.intentConfirmActionHintYue
+    : zh.chat.intentConfirmActionHintZh;
+}
+
+/** 问问题意图确认：完整朗读稿（前缀 + 理解 + 操作提示） */
+export async function buildChatIntentConfirmSpeakText(displayText: string): Promise<string | null> {
+  const trimmed = displayText.trim();
+  if (!trimmed) return null;
+  const prefix = await getChatIntentUnderstandSpeakPrefix();
+  const hint = await getChatIntentConfirmActionHint();
+  return `${prefix}${trimmed}。${hint}`;
+}
+
 /** 用户确认改稿后的等待话术（普通话 / 粤语） */
 export async function getAssistantContinueLine(): Promise<string> {
   return (await isCantonese()) ? zh.writing.continueActionYue : zh.writing.continueActionZh;

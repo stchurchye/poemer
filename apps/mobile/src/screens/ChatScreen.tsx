@@ -24,7 +24,7 @@ import {
   getAssistantIntentAnalyzingLine,
   getAssistantThinkingLine,
   getAssistantThinkingLongLine,
-  getChatIntentUnderstandSpeakPrefix,
+  buildChatIntentConfirmSpeakText,
 } from '../lib/assistantCopy';
 import {
   announceAssistantReplyParallel,
@@ -536,6 +536,8 @@ export function ChatScreen() {
       setIntentAnalyzing(true);
       void announceAssistantWaiting(analyzingLine);
 
+      let intentConfirmSpeak: string | null = null;
+
       try {
         const res = await api.analyzeChatIntent(sessionId, { content: trimmed, source });
         if (res.data.guide) {
@@ -571,10 +573,7 @@ export function ChatScreen() {
           ready: res.data.ready,
         });
         scrollToEnd();
-        if (displayText) {
-          const prefix = await getChatIntentUnderstandSpeakPrefix();
-          announceAssistantSpeak(`${prefix}${displayText}`);
-        }
+        intentConfirmSpeak = await buildChatIntentConfirmSpeakText(displayText);
       } catch (e) {
         const { message, hint } = apiErrorText(e);
         if (source === 'text') setInput(trimmed);
@@ -582,6 +581,10 @@ export function ChatScreen() {
       } finally {
         void cancelAssistantFeedback();
         setIntentAnalyzing(false);
+      }
+
+      if (intentConfirmSpeak) {
+        announceAssistantSpeak(intentConfirmSpeak);
       }
     },
     [

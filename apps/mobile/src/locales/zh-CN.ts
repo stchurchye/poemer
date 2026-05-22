@@ -215,6 +215,9 @@ export const zh = {
     /** 问问题意图确认：仅朗读「小助手理解」时加此前缀 */
     intentUnderstandSpeakPrefixZh: '我是不是可以理解为',
     intentUnderstandSpeakPrefixYue: '我系唔系可以理解为',
+    /** 问问题意图确认：朗读理解后的操作提示（仅 TTS） */
+    intentConfirmActionHintZh: '对了就按确定发送，不对就按取消重新说。',
+    intentConfirmActionHintYue: '系嘅话按确认发送，唔系按取消重新讲过。',
     intentConfirm: '确定发送',
     intentCancel: '取消',
     intentAnalyzeFailed: '没能理解您的话，请稍后再试',
