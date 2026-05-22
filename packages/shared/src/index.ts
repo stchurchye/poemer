@@ -1,4 +1,6 @@
 export * from './types.js';
+export * from './persistedStore.js';
+export * from './store/createLocalStore.js';
 export * from './errors/codes.js';
 export * from './errors/messages.js';
 export * from './time/formatRevisionTime.js';
@@ -9,6 +11,8 @@ export * from './llm/deepseek.js';
 export * from './llm/zenmux.js';
 export * from './llm/qwenTts.js';
 export * from './llm/qwenAsr.js';
+export * from './llm/dashscopeClient.js';
+export * from './llm/zenmuxClient.js';
 export * from './constants.js';
 export * from './document/formatChapterTitle.js';
 export * from './document/chapterTitle.js';
@@ -17,8 +21,11 @@ export * from './llm/contextBudget.js';
 export * from './llm/contextPreview.js';
 export * from './prompts/contextCompact.js';
 export * from './prompts/asr.js';
-export * from './prompts/chatIntent.js';
 export * from './prompts/assistantGuideRegistry.js';
+export {
+  chatIntentPromptForDialect,
+  formatChatIntentUserPayload,
+} from './prompts/chatIntent.js';
 export {
   writingChatSystemPromptForDialect,
   writingIntentPromptForDialect,
