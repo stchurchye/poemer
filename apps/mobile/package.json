@@ -14,8 +14,8 @@
     "build:android:prod": "eas build --platform android --profile production",
     "build:ios": "eas build --platform ios --profile production",
     "bump-version": "node scripts/bump-app-version.mjs",
-    "update": "npm run bump-version && eas update --branch production",
-    "update:preview": "npm run bump-version && eas update --branch preview"
+    "update": "npm run bump-version && npx eas-cli update --branch production --non-interactive --message \"production update\"",
+    "update:preview": "npm run bump-version && npx eas-cli update --branch preview --non-interactive --message \"preview update\""
   },
   "dependencies": {
     "@react-navigation/bottom-tabs": "^7.3.13",
