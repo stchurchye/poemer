@@ -635,6 +635,7 @@ export function WritingAssistantPanel({
       res: Awaited<ReturnType<typeof api.analyzeWritingAssistantIntent>>,
       userBubble: WritingUiMessage,
     ) => {
+      setIntentAnalyzing(false);
       const serverUser = res.data.user;
       const serverAssistant = res.data.assistant;
       const reply =
@@ -1407,6 +1408,14 @@ export function WritingAssistantPanel({
     );
   };
 
+  const hasInlineAssistantWait = messages.some(
+    (m) =>
+      m.role === 'assistant' &&
+      (m.status === 'pending' || m.status === 'streaming'),
+  );
+  const showFooterWaitingRow =
+    (intentAnalyzing || directChatLoading) && !hasInlineAssistantWait;
+
   return (
     <View style={styles.panel}>
       {showTitle ? (
@@ -1456,7 +1465,7 @@ export function WritingAssistantPanel({
           </Pressable>
         </Pressable>
       ) : null}
-      {intentAnalyzing || directChatLoading ? (
+      {showFooterWaitingRow ? (
         <AssistantLoadingRow
           label={intentAnalyzingLine}
           active
