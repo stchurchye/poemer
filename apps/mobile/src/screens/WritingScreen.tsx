@@ -82,12 +82,7 @@ import {
   type ChapterSharePayload,
 } from '../lib/chapterShare';
 import { TabletFrame } from '../components/TabletFrame';
-import {
-  CHROME_CHIP_PAD_V,
-  chipMinHeightForFontSize,
-  chromeBarMinHeight,
-  lineHeightForFontSize,
-} from '../theme/chromeText';
+import { CHROME_CHIP_PAD_V, chipMinHeightForFontSize, lineHeightForFontSize } from '../theme/chromeText';
 import { colors, typography } from '../theme/colors';
 import { radius } from '../theme/tokens';
 import { useLayout, useTypography } from '../theme/layout';
@@ -162,7 +157,6 @@ export function WritingScreen({ navigation, route }: Props) {
   const chromeFontSize = smallFontSize;
   const chromeLineHeight = lineHeightForFontSize(chromeFontSize);
   const chromeChipMinHeight = chipMinHeightForFontSize(chromeFontSize);
-  const chapterBarMinHeight = chromeBarMinHeight(chromeFontSize);
   const { collapsed: editorChromeCollapsed, onInputFocus, onInputBlur, expandChrome } =
     useEditorChromeCollapse();
   const [initLoading, setInitLoading] = useState(true);
@@ -1066,6 +1060,7 @@ export function WritingScreen({ navigation, route }: Props) {
                   style={styles.toolbarScroll}
                   contentContainerStyle={styles.toolbarRow}
                   keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
                 >
                   <WritingToolbarChip
                     label={zh.writing.shareCopyText}
@@ -1103,7 +1098,7 @@ export function WritingScreen({ navigation, route }: Props) {
                   />
                 </ScrollView>
 
-                <View style={styles.chapterTitleRow}>
+                <View style={styles.chapterTitleRow} collapsable={false}>
                   <View style={styles.chapterTitleMain}>
                     <Text style={styles.chapterTitleText} numberOfLines={2}>
                       {doc.title}
@@ -1140,12 +1135,13 @@ export function WritingScreen({ navigation, route }: Props) {
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  style={[styles.chapterBar, { minHeight: chapterBarMinHeight }]}
+                  style={styles.chapterBar}
                   contentContainerStyle={[
                     styles.chapterBarContent,
-                    { paddingVertical: CHROME_CHIP_PAD_V, minHeight: chapterBarMinHeight },
+                    { paddingVertical: CHROME_CHIP_PAD_V },
                   ]}
                   keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
                 >
                   {sortedChapters.map((ch) => (
                     <Pressable
@@ -1520,6 +1516,7 @@ const styles = StyleSheet.create({
   },
   toolbarScroll: {
     flexGrow: 0,
+    flexShrink: 0,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
@@ -1558,11 +1555,18 @@ const styles = StyleSheet.create({
   },
   toolbarChipTextActive: { color: colors.onPrimary },
   chapterBar: {
+    flexGrow: 0,
+    flexShrink: 0,
     marginBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 4 },
+  chapterBarContent: {
+    flexGrow: 0,
+    paddingHorizontal: 4,
+    alignItems: 'flex-start',
+    gap: 4,
+  },
   chapterTab: {
     paddingHorizontal: 10,
     borderRadius: 12,
@@ -1596,6 +1600,8 @@ const styles = StyleSheet.create({
   },
   toastText: { fontSize: typography.caption, color: colors.text, textAlign: 'center' },
   chapterTitleRow: {
+    flexGrow: 0,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
