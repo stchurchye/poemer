@@ -168,16 +168,15 @@ export function isRecognitionAvailable(): boolean {
   return ExpoSpeechRecognitionModule.isRecognitionAvailable();
 }
 
-/** Android：尝试触发系统离线中文包下载（不阻塞） */
+/**
+ * Android 离线语音包预下载（当前禁用）。
+ * expo-speech-recognition 的 androidTriggerOfflineModelDownload 在部分机型
+ *（如小米平板）会调用 createOnDeviceSpeechRecognizer，不支持时抛
+ * UnsupportedOperationException 且发生在原生 Handler 上，JS try/catch 接不住，会直接闪退。
+ */
 export async function prepareAndroidOfflinePack(): Promise<void> {
   if (Platform.OS !== 'android') return;
-  try {
-    await ExpoSpeechRecognitionModule.androidTriggerOfflineModelDownload({
-      locale: resolvedLocale,
-    });
-  } catch {
-    // 部分机型已安装或不需要
-  }
+  // 保留调用点，避免各屏 useEffect 再改；听写仍走云端/系统在线识别。
 }
 
 export function getResolvedSpeechLocale(): string {
