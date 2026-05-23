@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 export type FontSizePreset = 'xsmall' | 'small' | 'medium' | 'large' | 'xlarge';
 
 export type FontChannel = 'article' | 'dialog';
@@ -33,16 +35,36 @@ type FontPresetRow = {
   small: number;
 };
 
-/** 手机端字号表；默认 large 与现 layout.ts 一致 */
-const PHONE_PRESETS: Record<FontSizePreset, FontPresetRow> = {
-  xsmall: { title: 26, body: 22, caption: 18, button: 20, small: 16 },
-  small: { title: 30, body: 26, caption: 22, button: 24, small: 20 },
-  medium: { title: 33, body: 29, caption: 24, button: 26, small: 22 },
-  large: { title: 36, body: 32, caption: 26, button: 28, small: 24 },
-  xlarge: { title: 40, body: 36, caption: 30, button: 32, small: 28 },
+/** 系统未开启无障碍放大时的默认正文（Android 14sp / iOS 17pt） */
+export function getSystemAnchorBodySize(): number {
+  return Platform.select({ ios: 17, android: 14, default: 16 })!;
+}
+
+/**
+ * 各档相对系统默认正文的倍率（medium.body = 1.0 即锚定系统默认）。
+ * 倍率按原 Android 14sp 设计稿换算，large 档正文仍为约 32sp。
+ */
+const PRESET_SCALE: Record<FontSizePreset, FontPresetRow> = {
+  xsmall: { title: 26 / 14, body: 22 / 14, caption: 18 / 14, button: 20 / 14, small: 16 / 14 },
+  small: { title: 30 / 14, body: 26 / 14, caption: 22 / 14, button: 24 / 14, small: 20 / 14 },
+  medium: { title: 33 / 14, body: 1, caption: 24 / 14, button: 26 / 14, small: 22 / 14 },
+  large: { title: 36 / 14, body: 32 / 14, caption: 26 / 14, button: 28 / 14, small: 24 / 14 },
+  xlarge: { title: 40 / 14, body: 36 / 14, caption: 30 / 14, button: 32 / 14, small: 28 / 14 },
 };
 
 const TABLET_DELTA = 2;
+
+function rowFromAnchorScale(preset: FontSizePreset): FontPresetRow {
+  const anchor = getSystemAnchorBodySize();
+  const scale = PRESET_SCALE[preset] ?? PRESET_SCALE.large;
+  return {
+    title: Math.round(anchor * scale.title),
+    body: Math.round(anchor * scale.body),
+    caption: Math.round(anchor * scale.caption),
+    button: Math.round(anchor * scale.button),
+    small: Math.round(anchor * scale.small),
+  };
+}
 
 function metricsFromRow(row: FontPresetRow): FontMetrics {
   const bodyFontSize = row.body;
@@ -72,7 +94,7 @@ export function resolveFontMetrics(
   preset: FontSizePreset,
   isTablet: boolean,
 ): FontMetrics {
-  const row = PHONE_PRESETS[preset] ?? PHONE_PRESETS.large;
+  const row = rowFromAnchorScale(preset);
   return metricsFromRow(isTablet ? bumpRow(row, TABLET_DELTA) : row);
 }
 

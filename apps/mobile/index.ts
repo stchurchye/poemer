@@ -1,6 +1,9 @@
 import { registerRootComponent } from 'expo';
 
+import { setupTextDefaults } from './src/theme/setupTextDefaults';
 import App from './App';
+
+setupTextDefaults();
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 // It also ensures that whether you load the app in Expo Go or in a native build,

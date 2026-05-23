@@ -1,3 +1,5 @@
+import { DEFAULT_FONT_SIZE_PRESET, resolveFontMetrics } from './fontPresets';
+
 export const colors = {
   background: '#f5f7fa',
   surface: '#ffffff',
@@ -31,13 +33,15 @@ export const colors = {
   success: '#558b2f',
 };
 
-/** 全局字号（偏大，方便长辈阅读） */
+/** 壳层固定字号（默认 large，以系统默认正文为锚，不叠加系统 fontScale） */
+const shellFont = resolveFontMetrics(DEFAULT_FONT_SIZE_PRESET, false);
+
 export const typography = {
-  body: 32,
-  bodyLineHeight: 60,
-  title: 36,
-  caption: 26,
-  button: 28,
+  body: shellFont.bodyFontSize,
+  bodyLineHeight: shellFont.bodyLineHeight,
+  title: shellFont.titleFontSize,
+  caption: shellFont.captionFontSize,
+  button: shellFont.buttonFontSize,
   /** 次要说明、工具栏短文案 */
-  small: 24,
+  small: shellFont.smallFontSize,
 };
