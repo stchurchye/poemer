@@ -82,6 +82,12 @@ import {
   type ChapterSharePayload,
 } from '../lib/chapterShare';
 import { TabletFrame } from '../components/TabletFrame';
+import {
+  CHROME_CHIP_PAD_V,
+  chipMinHeightForFontSize,
+  chromeBarMinHeight,
+  lineHeightForFontSize,
+} from '../theme/chromeText';
 import { colors, typography } from '../theme/colors';
 import { radius } from '../theme/tokens';
 import { useLayout, useTypography } from '../theme/layout';
@@ -102,6 +108,7 @@ function WritingToolbarChip({
   tone = 'default',
   fontSize,
   lineHeight,
+  chipMinHeight,
 }: {
   label: string;
   onPress: () => void;
@@ -111,12 +118,14 @@ function WritingToolbarChip({
   tone?: 'default' | 'light';
   fontSize: number;
   lineHeight: number;
+  chipMinHeight: number;
 }) {
   const isLight = tone === 'light' && !active;
   return (
     <Pressable
       style={[
         styles.toolbarChip,
+        { minHeight: chipMinHeight, paddingVertical: CHROME_CHIP_PAD_V },
         isLight && styles.toolbarChipLight,
         active && styles.toolbarChipActive,
         (disabled || loading) && styles.toolbarChipDisabled,
@@ -151,7 +160,9 @@ export function WritingScreen({ navigation, route }: Props) {
   const { isTablet, smallFontSize } = useLayout();
   const { bodyFontSize, bodyLineHeight } = useTypography('article');
   const chromeFontSize = smallFontSize;
-  const chromeLineHeight = Math.round(chromeFontSize * 1.15);
+  const chromeLineHeight = lineHeightForFontSize(chromeFontSize);
+  const chromeChipMinHeight = chipMinHeightForFontSize(chromeFontSize);
+  const chapterBarMinHeight = chromeBarMinHeight(chromeFontSize);
   const { collapsed: editorChromeCollapsed, onInputFocus, onInputBlur, expandChrome } =
     useEditorChromeCollapse();
   const [initLoading, setInitLoading] = useState(true);
@@ -1062,6 +1073,7 @@ export function WritingScreen({ navigation, route }: Props) {
                     disabled={sharing}
                     fontSize={chromeFontSize}
                     lineHeight={chromeLineHeight}
+                    chipMinHeight={chromeChipMinHeight}
                   />
                   <WritingToolbarChip
                     label={zh.writing.shareGenerateImage}
@@ -1070,6 +1082,7 @@ export function WritingScreen({ navigation, route }: Props) {
                     loading={sharing}
                     fontSize={chromeFontSize}
                     lineHeight={chromeLineHeight}
+                    chipMinHeight={chromeChipMinHeight}
                   />
                   <WritingToolbarChip
                     label={zh.writing.newArticle}
@@ -1077,6 +1090,7 @@ export function WritingScreen({ navigation, route }: Props) {
                     disabled={creating}
                     fontSize={chromeFontSize}
                     lineHeight={chromeLineHeight}
+                    chipMinHeight={chromeChipMinHeight}
                   />
                   <WritingToolbarChip
                     label={speaking ? zh.writing.stopReading : zh.writing.readMode}
@@ -1085,6 +1099,7 @@ export function WritingScreen({ navigation, route }: Props) {
                     tone="light"
                     fontSize={chromeFontSize}
                     lineHeight={chromeLineHeight}
+                    chipMinHeight={chromeChipMinHeight}
                   />
                 </ScrollView>
 
@@ -1105,6 +1120,7 @@ export function WritingScreen({ navigation, route }: Props) {
                       onPress={() => void renameArticleTitle()}
                       fontSize={chromeFontSize}
                       lineHeight={chromeLineHeight}
+                      chipMinHeight={chromeChipMinHeight}
                     />
                     <WritingToolbarChip
                       label={zh.writing.history}
@@ -1116,6 +1132,7 @@ export function WritingScreen({ navigation, route }: Props) {
                       }
                       fontSize={chromeFontSize}
                       lineHeight={chromeLineHeight}
+                      chipMinHeight={chromeChipMinHeight}
                     />
                   </View>
                 </View>
@@ -1123,8 +1140,11 @@ export function WritingScreen({ navigation, route }: Props) {
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
-                  style={styles.chapterBar}
-                  contentContainerStyle={styles.chapterBarContent}
+                  style={[styles.chapterBar, { minHeight: chapterBarMinHeight }]}
+                  contentContainerStyle={[
+                    styles.chapterBarContent,
+                    { paddingVertical: CHROME_CHIP_PAD_V, minHeight: chapterBarMinHeight },
+                  ]}
                   keyboardShouldPersistTaps="handled"
                 >
                   {sortedChapters.map((ch) => (
@@ -1132,6 +1152,7 @@ export function WritingScreen({ navigation, route }: Props) {
                       key={ch.id}
                       style={[
                         styles.chapterTab,
+                        { minHeight: chromeChipMinHeight, paddingVertical: CHROME_CHIP_PAD_V },
                         activeChapter?.id === ch.id && styles.chapterTabActive,
                       ]}
                       onPress={() => void switchChapter(ch.id)}
@@ -1151,7 +1172,11 @@ export function WritingScreen({ navigation, route }: Props) {
                     </Pressable>
                   ))}
                   <Pressable
-                    style={[styles.chapterAdd, addingChapter && styles.chapterAddDisabled]}
+                    style={[
+                      styles.chapterAdd,
+                      { minHeight: chromeChipMinHeight, paddingVertical: CHROME_CHIP_PAD_V },
+                      addingChapter && styles.chapterAddDisabled,
+                    ]}
                     onPress={() => void handleAddChapter()}
                     disabled={addingChapter}
                     hitSlop={8}
@@ -1483,11 +1508,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     fontSize: typography.caption,
+    lineHeight: lineHeightForFontSize(typography.caption),
     fontWeight: '600',
     color: colors.text,
   },
   chromePeekAction: {
     fontSize: typography.caption,
+    lineHeight: lineHeightForFontSize(typography.caption),
     fontWeight: '600',
     color: colors.primary,
   },
@@ -1500,12 +1527,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: CHROME_CHIP_PAD_V,
     gap: 6,
   },
   toolbarChip: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
     borderRadius: radius.sm,
     borderWidth: 1,
     borderColor: colors.primaryBorder,
@@ -1532,18 +1558,15 @@ const styles = StyleSheet.create({
   },
   toolbarChipTextActive: { color: colors.onPrimary },
   chapterBar: {
-    maxHeight: 44,
     marginBottom: 2,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 4, paddingVertical: 2 },
+  chapterBarContent: { paddingHorizontal: 4, alignItems: 'center', gap: 4 },
   chapterTab: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
     borderRadius: 12,
     backgroundColor: colors.surface,
-    marginVertical: 1,
     borderWidth: 1,
     borderColor: colors.border,
     justifyContent: 'center',
@@ -1558,10 +1581,8 @@ const styles = StyleSheet.create({
   chapterTabTextActive: { color: colors.text, fontWeight: '600' },
   chapterAdd: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
     borderRadius: 12,
     backgroundColor: colors.primarySoft,
-    marginVertical: 1,
     justifyContent: 'center',
   },
   chapterAddDisabled: { opacity: 0.6 },
@@ -1612,7 +1633,7 @@ const styles = StyleSheet.create({
   readCursorHint: {
     fontSize: typography.small,
     color: colors.textMuted,
-    lineHeight: 24,
+    lineHeight: lineHeightForFontSize(typography.small),
   },
   readingHint: {
     fontSize: typography.caption,

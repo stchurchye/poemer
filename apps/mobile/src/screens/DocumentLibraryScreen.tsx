@@ -26,6 +26,7 @@ import { LoadErrorView } from '../components/LoadErrorView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { TabletFrame } from '../components/TabletFrame';
 import { colors, typography } from '../theme/colors';
+import { lineHeightForFontSize } from '../theme/chromeText';
 import { radius } from '../theme/tokens';
 import { useLayout } from '../theme/layout';
 import { useTextStyles } from '../theme/useTextStyles';
@@ -280,6 +281,7 @@ const styles = StyleSheet.create({
   },
   currentBadgeText: {
     fontSize: typography.small,
+    lineHeight: lineHeightForFontSize(typography.small),
     color: colors.onPrimary,
     fontWeight: '600',
   },

@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
 import { colors, typography } from '../theme/colors';
+import { lineHeightForFontSize } from '../theme/chromeText';
 import { radius, touch } from '../theme/tokens';
 
 interface Props {
@@ -60,7 +61,11 @@ const styles = StyleSheet.create({
   },
   ghost: { backgroundColor: 'transparent' },
   disabled: { opacity: 0.5 },
-  text: { fontSize: typography.button, fontWeight: '600' },
+  text: {
+    fontSize: typography.button,
+    lineHeight: lineHeightForFontSize(typography.button),
+    fontWeight: '600',
+  },
   textPrimary: { color: colors.onPrimary },
   textSecondary: { color: colors.text },
 });

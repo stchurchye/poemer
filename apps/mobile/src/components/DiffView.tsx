@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { DiffSegment } from '@shiren/shared';
 import { colors, typography } from '../theme/colors';
+import { lineHeightForFontSize } from '../theme/chromeText';
 import { zh } from '../locales/zh-CN';
 
 interface Props {
@@ -152,6 +153,7 @@ const styles = StyleSheet.create({
   },
   legendSampleInsert: {
     fontSize: typography.caption,
+    lineHeight: lineHeightForFontSize(typography.caption),
     fontWeight: '700',
     color: colors.insertText,
     backgroundColor: colors.insertBg,
@@ -164,6 +166,7 @@ const styles = StyleSheet.create({
   },
   legendSampleDelete: {
     fontSize: typography.caption,
+    lineHeight: lineHeightForFontSize(typography.caption),
     fontWeight: '600',
     color: colors.deleteText,
     backgroundColor: colors.deleteBg,
@@ -174,7 +177,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     textDecorationLine: 'line-through',
   },
-  legendLabel: { fontSize: typography.caption, color: colors.textMuted },
+  legendLabel: {
+    fontSize: typography.caption,
+    lineHeight: lineHeightForFontSize(typography.caption),
+    color: colors.textMuted,
+  },
   commentBox: {
     backgroundColor: colors.primarySoft,
     borderRadius: 12,

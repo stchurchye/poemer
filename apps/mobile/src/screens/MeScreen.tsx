@@ -25,6 +25,7 @@ import { TabletFrame } from '../components/TabletFrame';
 import { colors, typography } from '../theme/colors';
 import { useFontPreferences } from '../theme/FontPreferencesContext';
 import type { FontSizePreset } from '../theme/fontPresets';
+import { chipMinHeightForFontSize, lineHeightForFontSize } from '../theme/chromeText';
 import { useLayout } from '../theme/layout';
 import { AppVersionFooter } from '../components/AppVersionFooter';
 import { LocalDataCard } from '../components/LocalDataCard';
@@ -34,6 +35,10 @@ export function MeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<MeStackParamList, 'MeMain'>>();
   const insets = useSafeAreaInsets();
   const { isTablet, bodyFontSize, width, buttonFontSize, captionFontSize } = useLayout();
+  const chipLineHeight = lineHeightForFontSize(captionFontSize);
+  const dialectChipMinHeight = chipMinHeightForFontSize(captionFontSize);
+  const voiceRowMinHeight = chipMinHeightForFontSize(bodyFontSize);
+  const voiceNameLineHeight = lineHeightForFontSize(bodyFontSize);
   const { articlePreset, dialogPreset, setArticlePreset, setDialogPreset } = useFontPreferences();
   const mePadX = isTablet ? 20 : 12;
   const [keysConfiguredCount, setKeysConfiguredCount] = useState(0);
@@ -172,13 +177,17 @@ export function MeScreen() {
           <Text style={[styles.section, isTablet && styles.sectionTablet]}>{zh.me.dialectTitle}</Text>
           <View style={styles.dialectRow}>
             <Pressable
-              style={[styles.dialectChip, dialect === 'mandarin' && styles.dialectChipActive]}
+              style={[
+                styles.dialectChip,
+                { minHeight: dialectChipMinHeight },
+                dialect === 'mandarin' && styles.dialectChipActive,
+              ]}
               onPress={() => void selectDialect('mandarin')}
             >
               <Text
                 style={[
                   styles.dialectChipText,
-                  { fontSize: captionFontSize },
+                  { fontSize: captionFontSize, lineHeight: chipLineHeight },
                   dialect === 'mandarin' && styles.dialectChipTextActive,
                 ]}
               >
@@ -186,13 +195,17 @@ export function MeScreen() {
               </Text>
             </Pressable>
             <Pressable
-              style={[styles.dialectChip, dialect === 'cantonese' && styles.dialectChipActive]}
+              style={[
+                styles.dialectChip,
+                { minHeight: dialectChipMinHeight },
+                dialect === 'cantonese' && styles.dialectChipActive,
+              ]}
               onPress={() => void selectDialect('cantonese')}
             >
               <Text
                 style={[
                   styles.dialectChipText,
-                  { fontSize: captionFontSize },
+                  { fontSize: captionFontSize, lineHeight: chipLineHeight },
                   dialect === 'cantonese' && styles.dialectChipTextActive,
                 ]}
               >
@@ -209,10 +222,19 @@ export function MeScreen() {
             return (
               <View key={id} style={styles.voiceItem}>
                 <Pressable
-                  style={[styles.voiceRow, selectedVoiceId === id && styles.voiceRowActive]}
+                  style={[
+                    styles.voiceRow,
+                    { minHeight: voiceRowMinHeight },
+                    selectedVoiceId === id && styles.voiceRowActive,
+                  ]}
                   onPress={() => void selectVoice(id)}
                 >
-                  <Text style={[styles.voiceName, { fontSize: bodyFontSize }]}>
+                  <Text
+                    style={[
+                      styles.voiceName,
+                      { fontSize: bodyFontSize, lineHeight: voiceNameLineHeight },
+                    ]}
+                  >
                     {ttsVoiceOptionLabel(v)}
                   </Text>
                 </Pressable>
@@ -299,7 +321,7 @@ const styles = StyleSheet.create({
   dialectRow: { flexDirection: 'row', gap: 18, marginBottom: 24 },
   dialectChip: {
     flex: 1,
-    paddingVertical: 16,
+    paddingVertical: 8,
     paddingHorizontal: 8,
     borderRadius: 12,
     borderWidth: 1,
@@ -307,7 +329,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 56,
   },
   dialectChipActive: {
     borderColor: colors.primary,
@@ -319,17 +340,21 @@ const styles = StyleSheet.create({
   voiceItem: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   voiceRow: {
     flex: 1,
-    paddingVertical: 14,
+    paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.background,
-    minHeight: 52,
     justifyContent: 'center',
   },
   voiceRowActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   voiceName: { color: colors.text },
   voicePreviewBtn: { paddingVertical: 14, paddingHorizontal: 12, minHeight: 52, justifyContent: 'center' },
-  voicePreviewText: { fontSize: typography.caption, color: colors.primary, fontWeight: '600' },
+  voicePreviewText: {
+    fontSize: typography.caption,
+    lineHeight: lineHeightForFontSize(typography.caption),
+    color: colors.primary,
+    fontWeight: '600',
+  },
 });

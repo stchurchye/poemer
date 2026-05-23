@@ -20,6 +20,7 @@ import { appAlert } from '../lib/appAlert';
 import { colors } from '../theme/colors';
 import { radius } from '../theme/tokens';
 import type { FontChannel } from '../theme/fontPresets';
+import { chipMinHeightForFontSize, lineHeightForFontSize } from '../theme/chromeText';
 import { useLayout, useTypography } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 import { composeBarIcons } from '../assets/chatIcons';
@@ -82,12 +83,13 @@ export function ChatComposeBar({
   const { captionFontSize, buttonFontSize, smallFontSize } = useTypography(fontChannel);
   const isWritingDock = Boolean(imageActionLabel);
   const composeFontSize = captionFontSize;
-  const composeLineHeight = captionFontSize;
+  const composeLineHeight = lineHeightForFontSize(composeFontSize);
   const holdFontSize = isWritingDock ? smallFontSize : composeFontSize;
-  const holdLineHeight = Math.round(holdFontSize * 1.2);
+  const holdLineHeight = lineHeightForFontSize(holdFontSize);
+  const fieldFontSize = Math.max(composeFontSize, holdFontSize);
   const iconSize = isWritingDock ? (isTablet ? 46 : 44) : isTablet ? 42 : 40;
   const modeBtnWidth = isWritingDock ? (isTablet ? 64 : 60) : isTablet ? 56 : 52;
-  const fieldHeight = isTablet ? 60 : 56;
+  const fieldHeight = Math.max(isTablet ? 60 : 56, chipMinHeightForFontSize(fieldFontSize));
   const bottomPad = bottomInset ?? 8;
   const showContextSlot =
     reserveContextSlot || contextUsage !== undefined || contextUsageLoading;
@@ -260,7 +262,15 @@ export function ChatComposeBar({
                   {busy ? (
                     <ActivityIndicator color={colors.onPrimary} size="small" />
                   ) : (
-                    <Text style={[styles.sendBtnText, { fontSize: buttonFontSize }]}>
+                    <Text
+                      style={[
+                        styles.sendBtnText,
+                        {
+                          fontSize: buttonFontSize,
+                          lineHeight: lineHeightForFontSize(buttonFontSize),
+                        },
+                      ]}
+                    >
                       {sendLabel ?? zh.chat.send}
                     </Text>
                   )}
@@ -275,7 +285,13 @@ export function ChatComposeBar({
                   accessibilityLabel={imageActionLabel}
                 >
                   <Text
-                    style={[styles.imageTextBtnLabel, { fontSize: smallFontSize }]}
+                    style={[
+                      styles.imageTextBtnLabel,
+                      {
+                        fontSize: smallFontSize,
+                        lineHeight: lineHeightForFontSize(smallFontSize),
+                      },
+                    ]}
                     numberOfLines={1}
                   >
                     {imageActionLabel}
