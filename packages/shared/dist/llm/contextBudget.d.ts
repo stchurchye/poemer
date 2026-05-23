@@ -28,7 +28,7 @@ export type ContextUsage = {
     droppedVerbatimTurns: number;
 };
 export declare const DEFAULT_CONTEXT_WINDOW_TOKENS = 300000;
-export declare const DEFAULT_OUTPUT_RESERVE_TOKENS = 20000;
+export declare const DEFAULT_OUTPUT_RESERVE_TOKENS = 8000;
 /** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限 */
 export declare const COMPACT_SUMMARY_MAX_TOKENS = 100000;
 export declare const COMPACT_THRESHOLD_RATIO = 0.8;
@@ -44,6 +44,15 @@ export declare function formatTokenCount(n: number): string;
 export declare function tokensToEstimatedChars(tokens: number): number;
 export declare function formatCharCount(n: number): string;
 export declare function getContextBreakdownSegments(breakdown: ContextUsageBreakdown): {
+    key: ContextBreakdownKey;
+    tokens: number;
+    labelZh: string;
+    color: string;
+}[];
+/** 用户可见用量：不计「待发送」，用于圆环/详情占比 */
+export declare function contextUsageForDisplay(usage: ContextUsage): ContextUsage;
+/** 图例分段：不展示待发送 */
+export declare function getContextBreakdownSegmentsForDisplay(breakdown: ContextUsageBreakdown): {
     key: ContextBreakdownKey;
     tokens: number;
     labelZh: string;

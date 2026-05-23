@@ -11,6 +11,7 @@ import {
 import type { TextInput } from 'react-native';
 import {
   assistantWorkingLine,
+  contextUsageForDisplay,
   type ContextSelection,
   type ContextUsage,
   type Revision,
@@ -411,7 +412,7 @@ export function WritingAssistantPanel({
       return;
     }
     onHeaderContext({
-      ratio: contextUsage?.ratio ?? 0,
+      ratio: contextUsage ? contextUsageForDisplay(contextUsage).ratio : 0,
       loading: contextUsageLoading,
       onPress: () => void openContextDetail(),
       onLongPress: () => setContextHubOpen(true),

@@ -21,7 +21,7 @@ export function createDeepSeekModelClient(): ModelClient {
         throw new LocalModelError(
           '请先在设置里填写 DeepSeek 密钥',
           'MODEL_KEY_MISSING',
-          '用于问问题与写作发送前的意图识别；回答与改稿还需 ZenMux 密钥。',
+          '用于问问题/写作意图识别、写作改稿、侧栏聊天；问问题正文还需 ZenMux 密钥。',
         );
       }
       try {

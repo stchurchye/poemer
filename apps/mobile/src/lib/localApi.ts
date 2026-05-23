@@ -42,7 +42,11 @@ import {
   errorMessages,
   type ErrorCode,
 } from '@shiren/shared';
-import { DEEPSEEK_MODEL_PRO, getContextWindowTokens } from '@shiren/shared';
+import {
+  DEEPSEEK_MODEL_PRO,
+  getContextWindowTokens,
+  getOutputReserveTokens,
+} from '@shiren/shared';
 import { getZenMuxApiKey } from './zenmuxKey';
 import { createDeepSeekModelClient, LocalModelError, verifyDeepSeekKeyDirect } from './localModelClient';
 import { createZenMuxModelClient } from './zenmuxModelClient';
@@ -125,7 +129,7 @@ const emptyContextUsage: ContextUsage = {
     history: 0,
     document: 0,
     pendingUser: 0,
-    outputReserve: 20_000,
+    outputReserve: getOutputReserveTokens(),
   },
   compacted: false,
   droppedVerbatimTurns: 0,
@@ -326,7 +330,7 @@ export function createLocalApi(deps: {
           const zenmuxKey = await getZenMuxApiKey();
           if (!zenmuxKey) {
             const err = new Error(
-              '带图片的问问题需要先在设置里填写 ZenMux 密钥（与问答、改稿为同一项）',
+              '带图片的问问题需要先在设置里填写 ZenMux 密钥（与问问题回答为同一项）',
             ) as Error & {
               code?: string;
             };
@@ -499,7 +503,7 @@ export function createLocalApi(deps: {
       };
 
       try {
-        const textM = await textModel();
+        const writingM = await intentModel();
 
         if (payload.directChat) {
           const doc = store().getDocument(documentId);
@@ -516,7 +520,7 @@ export function createLocalApi(deps: {
           });
           const prepared = await prepareWritingChatContext({
             store: contextStoreAdapter(),
-            model: textM,
+            model: writingM,
             documentId,
             document: doc,
             allMessages: store().getWritingAssistantMessages(documentId),
@@ -527,7 +531,7 @@ export function createLocalApi(deps: {
             contextSelection: payload.contextSelection,
             referenceScope: scope,
           });
-          const chatReply = await completeChatMessages(textM, prepared.messages);
+          const chatReply = await completeChatMessages(writingM, prepared.messages);
           const { user, assistant } = persistChatExchange(chatReply);
           return okWritingIntent(
             {
@@ -600,7 +604,7 @@ export function createLocalApi(deps: {
           });
           const prepared = await prepareWritingIntentContext({
             store: contextStoreAdapter(),
-            model: textM,
+            model: writingM,
             documentId,
             document: doc,
             allMessages: store().getWritingAssistantMessages(documentId),
@@ -648,7 +652,7 @@ export function createLocalApi(deps: {
         });
         const prepared = await prepareWritingChatContext({
           store: contextStoreAdapter(),
-          model: textM,
+          model: writingM,
           documentId,
           document: doc,
           allMessages: store().getWritingAssistantMessages(documentId),
@@ -659,7 +663,7 @@ export function createLocalApi(deps: {
           contextSelection: payload.contextSelection,
           referenceScope: scope,
         });
-        const chatReply = await completeChatMessages(textM, prepared.messages);
+        const chatReply = await completeChatMessages(writingM, prepared.messages);
         const { user, assistant } = persistChatExchange(chatReply);
         return okWritingIntent(
           {
@@ -765,13 +769,13 @@ export function createLocalApi(deps: {
 
       try {
         const dialect = await getStoredDialect();
-        const textM = await textModel();
+        const writingM = await intentModel();
         store().updateWritingAssistantMessage(documentId, body.messageId, {
           confirmStatus: 'approved',
         });
 
         const executed = await runWritingExecute({
-          model: textM,
+          model: writingM,
           action,
           oldText,
           instruction,
@@ -850,7 +854,7 @@ export function createLocalApi(deps: {
 
       try {
         const dialect = await getStoredDialect();
-        const textM = await textModel();
+        const writingM = await intentModel();
         let text: string;
         let comment: string;
         let basis: import('@shiren/shared').WritingExecuteBasis;
@@ -859,7 +863,7 @@ export function createLocalApi(deps: {
           const feedback = options.retry.additionalFeedback?.trim();
           if (!feedback) notFound('VALIDATION');
           const result = await runWritingExecuteRetry({
-            model: textM,
+            model: writingM,
             action,
             oldText,
             baseInstruction: options.retry.baseInstruction ?? '',
@@ -874,7 +878,7 @@ export function createLocalApi(deps: {
           basis = result.basis;
         } else {
           const executed = await runWritingExecute({
-            model: textM,
+            model: writingM,
             action,
             oldText,
             instruction: options?.instruction,
@@ -998,7 +1002,7 @@ export function createLocalApi(deps: {
         configured: Boolean(key),
         source: 'local',
         model: DEEPSEEK_MODEL_PRO,
-        displayName: 'DeepSeek Pro（意图识别）',
+        displayName: 'DeepSeek Pro（写作/问问题）',
       });
     },
 

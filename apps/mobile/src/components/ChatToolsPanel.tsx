@@ -4,6 +4,13 @@ import { formatRevisionTime } from '@shiren/shared';
 import { PrimaryButton } from './PrimaryButton';
 import { colors } from '../theme/colors';
 import { radius } from '../theme/tokens';
+
+const compactPrimaryBtn = {
+  paddingVertical: 10,
+  paddingHorizontal: 16,
+  minHeight: 40,
+  borderRadius: radius.sm,
+} as const;
 import { useLayout } from '../theme/layout';
 import { useTextStyles } from '../theme/useTextStyles';
 import { zh } from '../locales/zh-CN';
@@ -50,6 +57,7 @@ export function ChatToolsPanel({
         variant="secondary"
         onPress={onNewSession}
         disabled={sending}
+        style={compactPrimaryBtn}
       />
 
       <Text style={[styles.sectionTitle, text.caption]}>{zh.chat.pastSessionsTitle}</Text>

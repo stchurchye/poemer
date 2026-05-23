@@ -8,7 +8,7 @@
 **诗人** 是一款给长辈/家人用的 **中文写作 + 问问题** App：
 
 - **手机端**（Expo React Native，**默认本地优先**）：文稿、版本、聊天存在本机 `shiren-store.json`；`api.ts` 门面全部走 `localApi.ts`。
-- **AI**：DeepSeek / ZenMux / 百炼由手机 **SecureStore 密钥直连**，不经过诗人 API。Mobile 路由：**DeepSeek Pro** = 问问题/写作意图；**ZenMux Gemini 3.1** = 问答正文、写作改稿、侧栏聊天、上下文压缩；**ZenMux Claude Opus** = 问问题带图；**ZenMux Gemini** = 云端 OCR。
+- **AI**：DeepSeek / ZenMux / 百炼由手机 **SecureStore 密钥直连**，不经过诗人 API。Mobile 路由：**DeepSeek Pro** = 问问题/写作意图、写作改稿、侧栏聊天；**ZenMux Gemini 3.1** = 问问题正文、上下文压缩；**ZenMux Claude Opus** = 问问题带图；**ZenMux Gemini** = 云端 OCR。
 - **可选 legacy 服务端**（Hono, 端口 `3921`）：`apps/api` + `store.json`，供自建云部署；与当前默认 mobile 路径**并行**，无自动同步。
 
 **核心原则**：
@@ -96,7 +96,7 @@ docker-compose.yml    仅 legacy API
 
 | 模块 | 路径 |
 |------|------|
-| Token 预算 | `packages/shared/src/llm/contextBudget.ts`（默认 300k 窗口，20k 输出预留，摘要上限 100k） |
+| Token 预算 / 小助手记忆 | `packages/shared/src/llm/contextBudget.ts`（默认 300k 窗口，8k 输出预留，摘要上限 100k；UI 展示「压缩后的历史」+「对话内容」，待发送不计入占比） |
 | 组装管道 | `apps/api/src/lib/contextPipeline.ts` |
 | 自动压缩 | `apps/api/src/lib/contextCompact.ts` |
 | 写作上下文过滤 | `packages/shared/src/writingAssistantContext.ts` → `filterWritingMessagesForContext`（取消的确认轮次不进模型） |

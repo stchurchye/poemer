@@ -149,7 +149,7 @@ export function blocksFromAssembleChatResult(
     blocks.push({
       id: blockId('summary', idx++),
       kind: 'summary',
-      label: '对话摘要',
+      label: '压缩后的历史',
       content: summaryMsg.content,
       tokens: estimateTokens(summaryMsg.content),
       selectable: true,
@@ -194,24 +194,42 @@ export function blocksFromAssembleChatResult(
     });
   }
 
-  const pending = assembled.messages[assembled.messages.length - 1];
-  if (pending?.role === 'user') {
-    blocks.push({
-      id: blockId('pending', idx++),
-      kind: 'pending_user',
-      label: '待发送',
-      content: pending.content,
-      tokens: estimateTokens(pending.content),
-      selectable: false,
-      selectedByDefault: true,
-    });
-  }
-
   return {
     blocks,
     usage: assembled.usage,
     messages: assembled.messages,
   };
+}
+
+export type ContextPreviewSection = 'fixed' | 'compressedHistory' | 'dialogue';
+
+export function contextPreviewSection(block: ContextPreviewBlock): ContextPreviewSection {
+  if (block.kind === 'summary') return 'compressedHistory';
+  if (
+    block.kind === 'history_user' ||
+    block.kind === 'history_assistant' ||
+    block.omittedByBudget
+  ) {
+    return 'dialogue';
+  }
+  return 'fixed';
+}
+
+export function groupContextPreviewBlocks(blocks: ContextPreviewBlock[]): {
+  fixed: ContextPreviewBlock[];
+  compressedHistory: ContextPreviewBlock[];
+  dialogue: ContextPreviewBlock[];
+} {
+  const fixed: ContextPreviewBlock[] = [];
+  const compressedHistory: ContextPreviewBlock[] = [];
+  const dialogue: ContextPreviewBlock[] = [];
+  for (const block of blocks) {
+    const section = contextPreviewSection(block);
+    if (section === 'compressedHistory') compressedHistory.push(block);
+    else if (section === 'dialogue') dialogue.push(block);
+    else fixed.push(block);
+  }
+  return { fixed, compressedHistory, dialogue };
 }
 
 export function blocksFromWritingIntent(
@@ -251,7 +269,7 @@ export function blocksFromWritingIntent(
     blocks.push({
       id: blockId('summary', idx++),
       kind: 'summary',
-      label: '写作对话摘要',
+      label: '压缩后的历史',
       content: summaryMsg.content,
       tokens: estimateTokens(summaryMsg.content),
       selectable: true,
@@ -319,19 +337,6 @@ export function blocksFromWritingIntent(
       selectedByDefault: false,
       omittedByBudget: true,
       role: turn.role,
-    });
-  }
-
-  const pending = assembled.messages[assembled.messages.length - 1];
-  if (pending?.role === 'user') {
-    blocks.push({
-      id: blockId('wpending', idx++),
-      kind: 'pending_user',
-      label: '待发送',
-      content: pending.content,
-      tokens: estimateTokens(pending.content),
-      selectable: false,
-      selectedByDefault: true,
     });
   }
 

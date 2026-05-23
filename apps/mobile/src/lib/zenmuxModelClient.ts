@@ -11,7 +11,7 @@ export function createZenMuxModelClient(): ModelClient {
         throw new LocalModelError(
           '请先在设置里填写 ZenMux 密钥',
           'MODEL_KEY_MISSING',
-          '问问题回答、写作改稿与侧栏聊天需要 ZenMux（Gemini）；带图问问题也需要。',
+          '问问题文字回答与带图问问题需要 ZenMux（Gemini / Opus）。',
         );
       }
       try {

@@ -18,6 +18,7 @@ import type { AssistantGuideKey, ChatSession, ContextSelection, ContextUsage } f
 import { api } from '../lib/api';
 import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
 import { useReconnectEffect, useSuppressGlobalOfflineBanner } from '../context/ApiConnectivityContext';
+import { HeaderChipButton } from '../components/HeaderChipButton';
 import { LoadErrorView } from '../components/LoadErrorView';
 import { ReconnectBanner } from '../components/ReconnectBanner';
 import {
@@ -40,6 +41,7 @@ import {
   CHAT_MAX_IMAGES_PER_MESSAGE,
   chatStoredUserContent,
   chatUserBubbleDisplayText,
+  contextUsageForDisplay,
 } from '@shiren/shared';
 import { assetToBase64 } from '../lib/imageBase64';
 import {
@@ -68,7 +70,6 @@ import { colors, typography } from '../theme/colors';
 import { useLayout } from '../theme/layout';
 import { chatMessageStyles } from '../theme/chatMessage';
 import { useTextStyles } from '../theme/useTextStyles';
-import { radius, touch } from '../theme/tokens';
 import type { RootTabParamList } from '../navigation/types';
 import { zh } from '../locales/zh-CN';
 
@@ -880,7 +881,9 @@ export function ChatScreen() {
                 </Text>
                 {showHeaderContext ? (
                   <HeaderContextMeter
-                    ratio={contextUsage?.ratio ?? 0}
+                    ratio={
+                      contextUsage ? contextUsageForDisplay(contextUsage).ratio : 0
+                    }
                     loading={contextUsageLoading}
                     onPress={() => {
                       if (contextUsage) setContextDetailUsage(contextUsage);
@@ -890,31 +893,21 @@ export function ChatScreen() {
                 ) : null}
               </View>
               <View style={styles.headerActions}>
-                <Pressable
-                  style={[
-                    styles.readBtn,
-                    speaking && styles.readBtnActive,
-                    !canReadReply && !speaking && styles.readBtnDisabled,
-                  ]}
+                <HeaderChipButton
+                  label={speaking ? zh.writing.stopReading : zh.writing.readMode}
                   onPress={() => void toggleReadAloud()}
+                  active={speaking}
                   disabled={!canReadReply && !speaking}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel={speaking ? zh.writing.stopReading : zh.writing.readMode}
-                >
-                  <Text style={[styles.readBtnText, speaking && styles.readBtnTextActive]}>
-                    {speaking ? zh.writing.stopReading : zh.writing.readMode}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={styles.toolsOpenBtn}
+                  accessibilityLabel={
+                    speaking ? zh.writing.stopReading : zh.writing.readMode
+                  }
+                />
+                <HeaderChipButton
+                  label={zh.chat.openTools}
+                  tone="primary"
                   onPress={() => setToolsOpen(true)}
-                  hitSlop={8}
-                  accessibilityRole="button"
                   accessibilityLabel={zh.chat.openTools}
-                >
-                  <Text style={styles.toolsOpenBtnText}>{zh.chat.openTools}</Text>
-                </Pressable>
+                />
               </View>
             </View>
             <FlatList
@@ -1018,47 +1011,8 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     flexShrink: 0,
-  },
-  readBtn: {
-    minHeight: touch.min,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-  },
-  readBtnActive: {
-    backgroundColor: colors.surface,
-    borderColor: colors.primary,
-  },
-  readBtnDisabled: { opacity: 0.45 },
-  readBtnText: {
-    fontSize: typography.caption,
-    color: colors.textMuted,
-    fontWeight: '500',
-  },
-  readBtnTextActive: {
-    color: colors.text,
-    fontWeight: '600',
-  },
-  toolsOpenBtn: {
-    minHeight: touch.min,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-  },
-  toolsOpenBtnText: {
-    fontSize: typography.caption,
-    fontWeight: '700',
-    color: colors.primary,
   },
   list: { flex: 1, minHeight: 0 },
   listContent: { paddingBottom: 16, paddingHorizontal: 4 },

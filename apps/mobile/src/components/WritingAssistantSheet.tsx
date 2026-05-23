@@ -10,9 +10,9 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, typography } from '../theme/colors';
+import { colors } from '../theme/colors';
+import { HeaderChipButton } from './HeaderChipButton';
 import { modalStyles } from '../theme/modalStyles';
-import { radius, touch } from '../theme/tokens';
 import { useTextStyles } from '../theme/useTextStyles';
 import { HeaderContextMeter } from './HeaderContextMeter';
 import { zh } from '../locales/zh-CN';
@@ -104,31 +104,17 @@ export function WritingAssistantSheet({
               </View>
               <View style={styles.headerActions}>
                 {headerReadAloud ? (
-                  <Pressable
-                    style={[
-                      styles.readBtn,
-                      headerReadAloud.speaking && styles.readBtnActive,
-                      !headerReadAloud.canRead &&
-                        !headerReadAloud.speaking &&
-                        styles.readBtnDisabled,
-                    ]}
+                  <HeaderChipButton
+                    label={
+                      headerReadAloud.speaking ? zh.writing.stopReading : zh.writing.readMode
+                    }
                     onPress={headerReadAloud.onToggle}
+                    active={headerReadAloud.speaking}
                     disabled={!headerReadAloud.canRead && !headerReadAloud.speaking}
-                    hitSlop={6}
-                    accessibilityRole="button"
                     accessibilityLabel={
                       headerReadAloud.speaking ? zh.writing.stopReading : zh.writing.readMode
                     }
-                  >
-                    <Text
-                      style={[
-                        styles.readBtnText,
-                        headerReadAloud.speaking && styles.readBtnTextActive,
-                      ]}
-                    >
-                      {headerReadAloud.speaking ? zh.writing.stopReading : zh.writing.readMode}
-                    </Text>
-                  </Pressable>
+                  />
                 ) : null}
                 <Pressable
                   onPress={onClose}
@@ -192,29 +178,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     flexShrink: 0,
-  },
-  readBtn: {
-    minHeight: touch.min,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-  },
-  readBtnActive: {
-    backgroundColor: colors.surface,
-    borderColor: colors.primary,
-  },
-  readBtnDisabled: { opacity: 0.45 },
-  readBtnText: {
-    fontSize: typography.caption,
-    color: colors.textMuted,
-    fontWeight: '500',
-  },
-  readBtnTextActive: {
-    color: colors.text,
-    fontWeight: '600',
   },
 });

@@ -1,7 +1,12 @@
 import { Modal, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import type { ContextUsage } from '@shiren/shared';
-import { formatTokenCount, getContextBreakdownSegments } from '@shiren/shared';
+import {
+  contextUsageForDisplay,
+  formatTokenCount,
+  getContextBreakdownSegmentsForDisplay,
+} from '@shiren/shared';
 import { colors } from '../theme/colors';
+import { radius } from '../theme/tokens';
 import { useLayout } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 
@@ -14,8 +19,9 @@ type ContentProps = {
 
 export function ContextUsageDetailContent({ usage, cardStyle, onCompact, compactBusy }: ContentProps) {
   const { bodyFontSize, smallFontSize } = useLayout();
-  const percent = Math.round(usage.ratio * 100);
-  const segments = getContextBreakdownSegments(usage.breakdown);
+  const display = contextUsageForDisplay(usage);
+  const percent = Math.round(display.ratio * 100);
+  const segments = getContextBreakdownSegmentsForDisplay(display.breakdown);
   const totalSegmentTokens = segments.reduce((s, seg) => s + seg.tokens, 0);
 
   return (
@@ -26,8 +32,8 @@ export function ContextUsageDetailContent({ usage, cardStyle, onCompact, compact
         </Text>
         <Text style={[styles.tokensText, { fontSize: smallFontSize }]}>
           {zh.context.tokensSummary(
-            formatTokenCount(usage.usedTokens),
-            formatTokenCount(usage.limitTokens),
+            formatTokenCount(display.usedTokens),
+            formatTokenCount(display.limitTokens),
           )}
         </Text>
       </View>
@@ -59,7 +65,7 @@ export function ContextUsageDetailContent({ usage, cardStyle, onCompact, compact
         ))}
       </View>
 
-      {usage.compacted ? (
+      {display.compacted ? (
         <Text style={[styles.hint, { fontSize: smallFontSize }]}>{zh.context.compactedHint}</Text>
       ) : null}
 
@@ -97,8 +103,29 @@ export function ContextUsageDetailModal({
   onCompact,
   compactBusy,
 }: Props) {
-  const { titleFontSize, bodyFontSize } = useLayout();
+  const { titleFontSize, bodyFontSize, captionFontSize } = useLayout();
   if (!visible || !usage) return null;
+
+  const headerBlock = (
+    <>
+      <View style={styles.inlineHeader}>
+        <View style={styles.titleCol}>
+          <Text style={[styles.inlineTitle, { fontSize: titleFontSize }]}>{zh.context.detailTitle}</Text>
+          <Text style={[styles.memoryDesc, { fontSize: captionFontSize }]}>
+            {zh.context.memoryDescription}
+          </Text>
+        </View>
+        <Pressable
+          onPress={onClose}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={zh.context.close}
+        >
+          <Text style={[styles.inlineClose, { fontSize: bodyFontSize }]}>✕</Text>
+        </Pressable>
+      </View>
+    </>
+  );
 
   if (inline) {
     return (
@@ -107,17 +134,7 @@ export function ContextUsageDetailModal({
         onPress={(e) => e.stopPropagation()}
         accessibilityViewIsModal
       >
-        <View style={styles.inlineHeader}>
-          <Text style={[styles.inlineTitle, { fontSize: titleFontSize }]}>{zh.context.detailTitle}</Text>
-          <Pressable
-            onPress={onClose}
-            hitSlop={12}
-            accessibilityRole="button"
-            accessibilityLabel={zh.context.close}
-          >
-            <Text style={[styles.inlineClose, { fontSize: bodyFontSize }]}>✕</Text>
-          </Pressable>
-        </View>
+        {headerBlock}
         <ContextUsageDetailContent
           usage={usage}
           cardStyle={styles.inlineBody}
@@ -136,17 +153,7 @@ export function ContextUsageDetailModal({
           onPress={(e) => e.stopPropagation()}
           accessibilityViewIsModal
         >
-          <View style={styles.inlineHeader}>
-            <Text style={[styles.inlineTitle, { fontSize: titleFontSize }]}>{zh.context.detailTitle}</Text>
-            <Pressable
-              onPress={onClose}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel={zh.context.close}
-            >
-              <Text style={[styles.inlineClose, { fontSize: bodyFontSize }]}>✕</Text>
-            </Pressable>
-          </View>
+          {headerBlock}
           <ContextUsageDetailContent
             usage={usage}
             cardStyle={styles.inlineBody}
@@ -194,17 +201,27 @@ const styles = StyleSheet.create({
   },
   inlineHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 14,
-    paddingBottom: 8,
+    paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+    gap: 8,
+  },
+  titleCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
   },
   inlineTitle: {
     fontWeight: '700',
     color: colors.text,
+  },
+  memoryDesc: {
+    color: colors.textMuted,
+    lineHeight: 22,
   },
   inlineClose: {
     color: colors.textMuted,
@@ -280,9 +297,9 @@ const styles = StyleSheet.create({
   },
   compactBtn: {
     marginTop: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    borderRadius: radius.sm,
     backgroundColor: colors.primarySoft,
     borderWidth: 1,
     borderColor: colors.primaryBorder,

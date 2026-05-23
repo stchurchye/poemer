@@ -10,9 +10,11 @@ import {
   View,
 } from 'react-native';
 import {
+  contextUsageForDisplay,
   defaultSelectedBlockIds,
   exclusionFromBlocks,
   formatMessagesAsMarkdown,
+  groupContextPreviewBlocks,
   selectedBlockIdsFromExclusion,
   usesExclusionMode,
   type ContextPreview,
@@ -23,6 +25,7 @@ import { api } from '../lib/api';
 import { apiErrorText } from '../lib/apiError';
 import { ContextUsageDetailContent } from './ContextUsageDetailModal';
 import { ContextPreviewBlockRow } from './ContextPreviewBlockRow';
+import { ContextPreviewSectionHeader } from './ContextPreviewSectionHeader';
 import { colors } from '../theme/colors';
 import { useLayout } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
@@ -176,12 +179,29 @@ export function ContextComposerModal({
   const selectable = selectableBlocks(preview?.blocks ?? []);
   const includedCount = selectable.filter((b) => selectedIds.includes(b.id)).length;
   const excludedCount = selectable.length - includedCount;
+  const grouped = preview ? groupContextPreviewBlocks(preview.blocks) : null;
+  const displayUsage = preview ? contextUsageForDisplay(preview.usage) : null;
+
+  const renderBlockList = (blocks: ContextPreviewBlock[]) =>
+    blocks.map((block) => (
+      <ContextPreviewBlockRow
+        key={block.id}
+        block={block}
+        selected={selectedIds.includes(block.id)}
+        onToggle={() => toggleBlock(block.id)}
+      />
+    ));
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={styles.page}>
         <View style={styles.header}>
-          <Text style={[styles.title, { fontSize: titleFontSize }]}>{zh.chat.composeContext}</Text>
+          <View style={styles.titleCol}>
+            <Text style={[styles.title, { fontSize: titleFontSize }]}>{zh.chat.composeContext}</Text>
+            <Text style={[styles.memoryDesc, { fontSize: captionFontSize }]}>
+              {zh.context.memoryDescription}
+            </Text>
+          </View>
           <Pressable onPress={onClose} hitSlop={12}>
             <Text style={[styles.closeLink, { fontSize: bodyFontSize }]}>{zh.context.close}</Text>
           </Pressable>
@@ -192,10 +212,10 @@ export function ContextComposerModal({
         ) : null}
         {error ? <Text style={[styles.error, { fontSize: captionFontSize }]}>{error}</Text> : null}
 
-        {preview ? (
+        {preview && displayUsage && grouped ? (
           <>
             <ContextUsageDetailContent usage={preview.usage} cardStyle={styles.usageCard} />
-            {preview.usage.ratio >= 0.9 ? (
+            {displayUsage.ratio >= 0.9 ? (
               <Text style={[styles.warn, { fontSize: captionFontSize }]}>{zh.context.tokenNearLimit}</Text>
             ) : null}
 
@@ -218,14 +238,24 @@ export function ContextComposerModal({
             </View>
 
             <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-              {preview.blocks.map((block) => (
-                <ContextPreviewBlockRow
-                  key={block.id}
-                  block={block}
-                  selected={selectedIds.includes(block.id)}
-                  onToggle={() => toggleBlock(block.id)}
-                />
-              ))}
+              {grouped.fixed.length > 0 ? (
+                <>
+                  <ContextPreviewSectionHeader title={zh.context.sectionOther} />
+                  {renderBlockList(grouped.fixed)}
+                </>
+              ) : null}
+              {grouped.compressedHistory.length > 0 ? (
+                <>
+                  <ContextPreviewSectionHeader title={zh.context.sectionCompressedHistory} />
+                  {renderBlockList(grouped.compressedHistory)}
+                </>
+              ) : null}
+              {grouped.dialogue.length > 0 ? (
+                <>
+                  <ContextPreviewSectionHeader title={zh.context.sectionDialogue} />
+                  {renderBlockList(grouped.dialogue)}
+                </>
+              ) : null}
 
               <Pressable
                 style={styles.promptHeader}
@@ -272,14 +302,24 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  titleCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
   },
   title: {
     fontWeight: '700',
     color: colors.text,
+  },
+  memoryDesc: {
+    color: colors.textMuted,
+    lineHeight: 22,
   },
   closeLink: {
     color: colors.primary,

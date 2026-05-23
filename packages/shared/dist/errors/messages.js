@@ -71,12 +71,12 @@ export const errorMessages = {
     },
     API_KEY_MISSING: {
         message: '还没设置 DeepSeek 密钥',
-        hint: '请到「设置」里填入 DeepSeek（问问题与写作发送前的意图识别）',
+        hint: '请到「设置」里填入 DeepSeek（问问题/写作意图、写作改稿、侧栏聊天）',
         retryable: false,
     },
     ZENMUX_KEY_MISSING: {
         message: '还没设置 ZenMux 密钥',
-        hint: '请到「设置」里填入 ZenMux（问问题回答、写作改稿、带图问问题与云端识图）',
+        hint: '请到「设置」里填入 ZenMux（问问题回答、带图问问题与云端识图）',
         retryable: false,
     },
     DASHSCOPE_KEY_MISSING: {

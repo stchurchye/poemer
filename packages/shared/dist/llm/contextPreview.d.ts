@@ -35,6 +35,13 @@ export declare function blocksFromAssembleChatResult(assembled: AssembleChatResu
     historyMessageIds?: string[];
     excludedMessageIds?: string[];
 }): ContextPreview;
+export type ContextPreviewSection = 'fixed' | 'compressedHistory' | 'dialogue';
+export declare function contextPreviewSection(block: ContextPreviewBlock): ContextPreviewSection;
+export declare function groupContextPreviewBlocks(blocks: ContextPreviewBlock[]): {
+    fixed: ContextPreviewBlock[];
+    compressedHistory: ContextPreviewBlock[];
+    dialogue: ContextPreviewBlock[];
+};
 export declare function blocksFromWritingIntent(assembled: AssembleWritingIntentResult, opts: {
     chapterBlock: string;
     documentBlock: string;

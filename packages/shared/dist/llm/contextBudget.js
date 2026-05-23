@@ -2,14 +2,14 @@
 /** 上下文分类展示顺序与配色（弹窗图例 / 分段条） */
 export const CONTEXT_BREAKDOWN_META = [
     { key: 'system', labelZh: '系统提示词', color: '#9CA3AF' },
-    { key: 'summary', labelZh: '对话摘要', color: '#F472B6' },
+    { key: 'summary', labelZh: '压缩后的历史', color: '#F472B6' },
     { key: 'history', labelZh: '对话内容', color: '#60A5FA' },
     { key: 'document', labelZh: '文档内容', color: '#34D399' },
     { key: 'pendingUser', labelZh: '待发送', color: '#FBBF24' },
     { key: 'outputReserve', labelZh: '输出预留', color: '#6B7280' },
 ];
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 300_000;
-export const DEFAULT_OUTPUT_RESERVE_TOKENS = 20_000;
+export const DEFAULT_OUTPUT_RESERVE_TOKENS = 8_000;
 /** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限 */
 export const COMPACT_SUMMARY_MAX_TOKENS = 100_000;
 export const COMPACT_THRESHOLD_RATIO = 0.8;
@@ -71,6 +71,28 @@ export function getContextBreakdownSegments(breakdown) {
         labelZh: meta.labelZh,
         color: meta.color,
     })).filter((s) => s.tokens > 0);
+}
+/** 用户可见用量：不计「待发送」，用于圆环/详情占比 */
+export function contextUsageForDisplay(usage) {
+    const breakdown = {
+        ...usage.breakdown,
+        pendingUser: 0,
+    };
+    const usedTokens = breakdown.system +
+        breakdown.summary +
+        breakdown.history +
+        breakdown.document +
+        breakdown.outputReserve;
+    return {
+        ...usage,
+        breakdown,
+        usedTokens,
+        ratio: usage.limitTokens > 0 ? Math.min(1, usedTokens / usage.limitTokens) : 0,
+    };
+}
+/** 图例分段：不展示待发送 */
+export function getContextBreakdownSegmentsForDisplay(breakdown) {
+    return getContextBreakdownSegments(breakdown).filter((s) => s.key !== 'pendingUser');
 }
 function fitHistoryFromEnd(history, budgetTokens) {
     if (budgetTokens <= 0 || history.length === 0) {
