@@ -41,13 +41,13 @@ export function getSystemAnchorBodySize(): number {
 }
 
 /**
- * 各档相对系统默认正文的倍率（medium.body = 1.0 即锚定系统默认）。
- * 倍率按原 Android 14sp 设计稿换算，large 档正文仍为约 32sp。
+ * 各档相对系统默认正文（14sp）的倍率；锚点仅用于换算像素，不改变「最小→最大」顺序。
+ * 与改版前绝对字号一致：22 / 26 / 29 / 32 / 36（Android）。
  */
 const PRESET_SCALE: Record<FontSizePreset, FontPresetRow> = {
   xsmall: { title: 26 / 14, body: 22 / 14, caption: 18 / 14, button: 20 / 14, small: 16 / 14 },
   small: { title: 30 / 14, body: 26 / 14, caption: 22 / 14, button: 24 / 14, small: 20 / 14 },
-  medium: { title: 33 / 14, body: 1, caption: 24 / 14, button: 26 / 14, small: 22 / 14 },
+  medium: { title: 33 / 14, body: 29 / 14, caption: 24 / 14, button: 26 / 14, small: 22 / 14 },
   large: { title: 36 / 14, body: 32 / 14, caption: 26 / 14, button: 28 / 14, small: 24 / 14 },
   xlarge: { title: 40 / 14, body: 36 / 14, caption: 30 / 14, button: 32 / 14, small: 28 / 14 },
 };

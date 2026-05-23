@@ -29,19 +29,26 @@ function chipLabelLineHeight(fontSize: number) {
 }
 
 export function FontSizePresetPicker({ title, sampleText, value, onChange }: Props) {
-  const { isTablet } = useLayout();
+  const { isTablet, buttonFontSize, captionFontSize } = useLayout();
   const sampleMetrics = resolveFontMetrics(value, isTablet);
   const xlargeBodySize = resolveFontMetrics('xlarge', isTablet).bodyFontSize;
   const chipHeight = chipLabelLineHeight(xlargeBodySize) + 12;
+  const chipLabelSize = captionFontSize;
 
   return (
     <View style={styles.block}>
-      <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet]}>{title}</Text>
+      <Text
+        style={[
+          styles.sectionTitle,
+          { fontSize: buttonFontSize },
+          isTablet && styles.sectionTitleTablet,
+        ]}
+      >
+        {title}
+      </Text>
       <View style={styles.chipRow}>
         {FONT_SIZE_PRESETS.map((preset) => {
           const active = value === preset;
-          const chipMetrics = resolveFontMetrics(preset, isTablet);
-          const labelSize = chipMetrics.bodyFontSize;
           return (
             <Pressable
               key={preset}
@@ -54,8 +61,8 @@ export function FontSizePresetPicker({ title, sampleText, value, onChange }: Pro
                 style={[
                   styles.chipText,
                   {
-                    fontSize: labelSize,
-                    lineHeight: chipLabelLineHeight(labelSize),
+                    fontSize: chipLabelSize,
+                    lineHeight: chipLabelLineHeight(chipLabelSize),
                   },
                   active && styles.chipTextActive,
                 ]}
@@ -84,7 +91,6 @@ export function FontSizePresetPicker({ title, sampleText, value, onChange }: Pro
 const styles = StyleSheet.create({
   block: { marginBottom: 24 },
   sectionTitle: {
-    fontSize: 28,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 14,
