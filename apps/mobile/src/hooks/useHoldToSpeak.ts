@@ -7,6 +7,7 @@ import { cancelAssistantFeedback } from '../lib/assistantFeedback';
 import {
   cancelCloudRecording,
   getCloudSpeechStatus,
+  isCloudRecordingOverSoftLimit,
   nativeModuleRebuildHint,
   startCloudRecording,
   stopCloudRecordingAndTranscribe,
@@ -57,10 +58,21 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
   const userCancelledRef = useRef(false);
   const initRetryRef = useRef(0);
   const startGenerationRef = useRef(0);
+  const cloudLimitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onPressOutRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     cloudModeRef.current = cloudMode;
   }, [cloudMode]);
+
+  const clearCloudLimitTimer = useCallback(() => {
+    if (cloudLimitTimerRef.current) {
+      clearInterval(cloudLimitTimerRef.current);
+      cloudLimitTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearCloudLimitTimer(), [clearCloudLimitTimer]);
 
   useEffect(() => {
     void (async () => {
@@ -195,6 +207,14 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
         await startCloudRecording();
         sessionActiveRef.current = true;
         listenStartedAtRef.current = Date.now();
+        clearCloudLimitTimer();
+        cloudLimitTimerRef.current = setInterval(() => {
+          if (!fingerDownRef.current || !sessionActiveRef.current) return;
+          if (!isCloudRecordingOverSoftLimit()) return;
+          clearCloudLimitTimer();
+          appAlert('提示', zh.voice.holdTooLong);
+          onPressOutRef.current();
+        }, 2000);
       } catch (e) {
         sessionActiveRef.current = false;
         setHolding(false);
@@ -251,6 +271,7 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
   }, [alertCloudUnavailable, transcribing]);
 
   const onPressOut = useCallback(() => {
+    clearCloudLimitTimer();
     fingerDownRef.current = false;
     const pressHeld = Date.now() - pressStartedAtRef.current;
 
@@ -312,7 +333,9 @@ export function useHoldToSpeak(onComplete: (text: string) => void) {
     }
 
     stopListening();
-  }, [onComplete]);
+  }, [clearCloudLimitTimer, onComplete]);
+
+  onPressOutRef.current = onPressOut;
 
   return { holding: holding || transcribing, transcribing, onPressIn, onPressOut };
 }

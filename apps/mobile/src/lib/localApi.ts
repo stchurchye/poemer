@@ -46,6 +46,7 @@ import {
   DEEPSEEK_MODEL_PRO,
   getContextWindowTokens,
   getOutputReserveTokens,
+  ZENMUX_MODEL_CHAT,
 } from '@shiren/shared';
 import { getZenMuxApiKey } from './zenmuxKey';
 import { createDeepSeekModelClient, LocalModelError, verifyDeepSeekKeyDirect } from './localModelClient';
@@ -159,6 +160,10 @@ async function textModel() {
   return createZenMuxModelClient();
 }
 
+async function chatReplyModel() {
+  return createZenMuxModelClient({ model: ZENMUX_MODEL_CHAT, webSearch: true });
+}
+
 export function createLocalApi(deps: {
   getStore: () => LocalStore | null;
   markChanged: () => void;
@@ -188,7 +193,7 @@ export function createLocalApi(deps: {
   }
 
   return {
-    health: async () => ok({ service: '诗人-local' }),
+    health: async () => ok({ service: '小作家-local' }),
 
     listDocuments: async () => ok(store().listDocuments()),
 
@@ -356,7 +361,7 @@ export function createLocalApi(deps: {
             throw e;
           }
         } else {
-          reply = await completeChatMessages(textM, prepared.messages);
+          reply = await completeChatMessages(await chatReplyModel(), prepared.messages);
         }
 
         const user = store().addChatMessage(sessionId, 'user', storedContent, {
@@ -1012,7 +1017,11 @@ export function createLocalApi(deps: {
       return ok(await verifyDeepSeekKeyDirect(key));
     },
 
-    transcribeAudio: async (body: { audioBase64: string; format?: string }) => {
+    transcribeAudio: async (body: {
+      audioBase64: string;
+      format?: string;
+      durationSec?: number;
+    }) => {
       try {
         const text = await transcribeAudioDirect(body);
         return ok({ text });

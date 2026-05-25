@@ -33,6 +33,19 @@ export function handleDashScopeError(c: Context<{ Variables: AppVariables }>, e:
         401,
       );
     }
+    if (e.status === 400) {
+      return c.json(
+        {
+          ok: false,
+          message: e.message || '请再检查一下输入',
+          hint: '请分成几段说，每段不超过五分钟',
+          code: ErrorCodes.VALIDATION,
+          requestId: c.get('requestId'),
+          retryable: true,
+        },
+        400,
+      );
+    }
     return c.json(
       {
         ok: false,

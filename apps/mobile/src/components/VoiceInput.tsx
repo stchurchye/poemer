@@ -26,6 +26,7 @@ import { cancelAssistantFeedback } from '../lib/assistantFeedback';
 import {
   cancelCloudRecording,
   hasCloudSpeech,
+  isCloudRecordingOverSoftLimit,
   startCloudRecording,
   stopCloudRecordingAndTranscribe,
 } from '../lib/cloudSpeech';
@@ -108,6 +109,17 @@ export function VoiceInput({
   const startGenerationRef = useRef(0);
   const initRetryRef = useRef(0);
   const simulatorWarnedRef = useRef(false);
+  const cloudLimitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const handlePressOutRef = useRef<() => void>(() => {});
+
+  const clearCloudLimitTimer = useCallback(() => {
+    if (cloudLimitTimerRef.current) {
+      clearInterval(cloudLimitTimerRef.current);
+      cloudLimitTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearCloudLimitTimer(), [clearCloudLimitTimer]);
 
   useEffect(() => {
     void (async () => {
@@ -223,6 +235,14 @@ export function VoiceInput({
         sessionActiveRef.current = true;
         listenStartedAtRef.current = Date.now();
         setListening(true);
+        clearCloudLimitTimer();
+        cloudLimitTimerRef.current = setInterval(() => {
+          if (!fingerDownRef.current || !sessionActiveRef.current) return;
+          if (!isCloudRecordingOverSoftLimit()) return;
+          clearCloudLimitTimer();
+          appAlert('提示', zh.voice.holdTooLong);
+          handlePressOutRef.current();
+        }, 2000);
       } catch (e) {
         const msg = String(e);
         setCloudMode(false);
@@ -278,9 +298,10 @@ export function VoiceInput({
     } catch {
       appAlert('听写提示', '暂时无法开始听您说话，请稍后再试');
     }
-  }, [disabled, cloudMode, transcribing]);
+  }, [clearCloudLimitTimer, disabled, cloudMode, transcribing]);
 
   const handlePressOut = useCallback(() => {
+    clearCloudLimitTimer();
     fingerDownRef.current = false;
 
     if (cloudMode && sessionActiveRef.current) {
@@ -326,7 +347,9 @@ export function VoiceInput({
     }
 
     stopListening();
-  }, [cloudMode]);
+  }, [clearCloudLimitTimer, cloudMode]);
+
+  handlePressOutRef.current = handlePressOut;
 
   const handleCancelListen = () => {
     userCancelledRef.current = true;

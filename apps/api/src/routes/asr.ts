@@ -1,5 +1,12 @@
 import { Hono } from 'hono';
-import { ErrorCodes, QWEN_ASR_MODEL, REPLY_DIALECT_HEADER } from '@shiren/shared';
+import {
+  ErrorCodes,
+  getQwenAsrLimitViolation,
+  QWEN_ASR_MAX_BASE64_CHARS,
+  QWEN_ASR_MODEL,
+  qwenAsrLimitMessage,
+  REPLY_DIALECT_HEADER,
+} from '@shiren/shared';
 import { parseReplyDialect } from '../lib/deepseek.js';
 import { getDashScopeKey, handleDashScopeError } from '../lib/dashscope-handler.js';
 import { DashScopeError, qwen3AsrTranscribe } from '../lib/dashscope.js';
@@ -13,6 +20,7 @@ asrRouter.post('/', async (c) => {
   const body = await c.req.json<{
     audioBase64?: string;
     format?: string;
+    durationSec?: number;
   }>();
 
   const dialect = parseReplyDialect(c.req.header(REPLY_DIALECT_HEADER));
@@ -29,8 +37,37 @@ asrRouter.post('/', async (c) => {
   if (!audioBase64 || audioBase64.length < 32) {
     return jsonError(c, ErrorCodes.VALIDATION, 400);
   }
-  if (audioBase64.length > 25_000_000) {
-    return jsonError(c, ErrorCodes.VALIDATION, 400);
+  if (audioBase64.length > QWEN_ASR_MAX_BASE64_CHARS) {
+    return c.json(
+      {
+        ok: false,
+        message: qwenAsrLimitMessage('size', audioBase64),
+        hint: '请分成几段说，每段不超过五分钟',
+        code: ErrorCodes.VALIDATION,
+        requestId: c.get('requestId'),
+        retryable: true,
+      },
+      400,
+    );
+  }
+
+  const durationSec =
+    typeof body.durationSec === 'number' && Number.isFinite(body.durationSec)
+      ? body.durationSec
+      : undefined;
+  const limit = getQwenAsrLimitViolation(audioBase64, durationSec);
+  if (limit) {
+    return c.json(
+      {
+        ok: false,
+        message: qwenAsrLimitMessage(limit, audioBase64),
+        hint: '请分成几段说，每段不超过五分钟',
+        code: ErrorCodes.VALIDATION,
+        requestId: c.get('requestId'),
+        retryable: true,
+      },
+      400,
+    );
   }
 
   try {
@@ -40,6 +77,7 @@ asrRouter.post('/', async (c) => {
       audioBase64,
       format: body.format ?? 'm4a',
       dialect,
+      durationSec,
     });
     if (!text) {
       return jsonError(c, ErrorCodes.ASR_EMPTY, 422);

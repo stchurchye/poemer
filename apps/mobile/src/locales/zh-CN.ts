@@ -1,4 +1,9 @@
 export const zh = {
+  app: {
+    name: '小作家',
+    exportFilePrefix: '小作家数据',
+    exportDialogTitle: '导出小作家数据',
+  },
   tabs: {
     writing: '写作',
     chat: '问问题',
@@ -71,7 +76,7 @@ export const zh = {
     continueActionYue: '收到啦，我依家去处理，等我一阵。',
     requestTimeout: '请求超时了，请点「再试一次」',
     cancel: '取消',
-    apply: '同意，用到文章里',
+    apply: '同意修改到文章',
     reject: '不要，保持原样',
     viewOnlyHint: '此处仅可查看增删对比',
     backFromDiff: '返回写作',
@@ -171,6 +176,7 @@ export const zh = {
     interimHint: '请慢慢说，我在听…',
     useForPolish: '按这个来润色',
     holdLonger: '请按住按钮，说完再松手，不着急',
+    holdTooLong: '已经说了好一会儿啦，请先松手；若还没说完，可以再说一小段',
     simulatorHint: '模拟器上语音可能不可用，请用真机按住说话测试',
     cloudFallbackLocal:
       '云端听写暂时不可用，已改用手机自带听写。请再按住说一次；若仍不行，请到「设置」打开麦克风和听写权限。',
@@ -310,7 +316,7 @@ export const zh = {
     deepseekNotConfigured: '未设置时，问问题/写作意图、改稿与侧栏聊天不可用',
     deepseekVerifyOk: '密钥可用，写作与问问题已就绪',
     deepseekVerifyFail: '密钥不可用，请检查是否复制完整',
-    zenmuxTitle: '问问题回答密钥（ZenMux · Gemini 3.1）',
+    zenmuxTitle: '问问题回答密钥（ZenMux · Claude Opus 4.6）',
     zenmuxPlaceholder: '粘贴密钥',
     zenmuxSave: '保存',
     zenmuxSaveOk: '密钥已保存并通过测试',

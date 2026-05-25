@@ -6,7 +6,7 @@ import {
   ZenMuxError,
   zenmuxOcr,
   verifyZenMuxKey as verifyZenMuxKeyRemote,
-  ZENMUX_MODEL_FLASH_LITE,
+  ZENMUX_MODEL_CHAT,
   QWEN_ASR_MODEL,
   QWEN_TTS_MODEL,
   OCR_RECOGNITION_PURPOSE,
@@ -50,6 +50,7 @@ function vendorError(
 export async function transcribeAudioDirect(body: {
   audioBase64: string;
   format?: string;
+  durationSec?: number;
 }): Promise<string> {
   const apiKey = await getDashScopeApiKey();
   if (!apiKey) {
@@ -64,6 +65,7 @@ export async function transcribeAudioDirect(body: {
       audioBase64: body.audioBase64,
       format: body.format ?? 'm4a',
       dialect,
+      durationSec: body.durationSec,
     });
     if (!text) {
       const err = new Error('没有听清，请再说一次') as Error & { code?: string };
@@ -152,8 +154,8 @@ export async function getZenMuxStatusLocal() {
   return {
     configured: Boolean(key),
     source: 'local',
-    model: ZENMUX_MODEL_FLASH_LITE,
-    displayName: 'ZenMux · Gemini 3.1 Flash Lite',
+    model: ZENMUX_MODEL_CHAT,
+    displayName: 'ZenMux · Claude Opus 4.6（问问题）',
   };
 }
 

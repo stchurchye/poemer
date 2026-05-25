@@ -1,3 +1,9 @@
+import {
+  getQwenAsrLimitViolation,
+  QWEN_ASR_RECORDING_SOFT_LIMIT_SEC,
+  qwenAsrLimitMessage,
+  qwenAsrPayloadSizeMb,
+} from '@shiren/shared';
 import { Platform } from 'react-native';
 import { deleteFileQuietly, readFileBase64 } from './fsLegacy';
 import { api } from './api';
@@ -12,6 +18,16 @@ type Recording = InstanceType<ExpoAv['Audio']['Recording']>;
 let avModule: ExpoAv | null = null;
 let avLoadError: Error | null = null;
 let recording: Recording | null = null;
+let recordingStartedAt = 0;
+
+export function getCloudRecordingDurationSec(): number {
+  if (!recordingStartedAt) return 0;
+  return (Date.now() - recordingStartedAt) / 1000;
+}
+
+export function isCloudRecordingOverSoftLimit(): boolean {
+  return getCloudRecordingDurationSec() > QWEN_ASR_RECORDING_SOFT_LIMIT_SEC;
+}
 
 export function nativeModuleRebuildHint(): string {
   if (Platform.OS === 'android') {
@@ -56,8 +72,32 @@ function audioFormatFromUri(uri: string): string {
   if (lower.endsWith('.wav')) return 'wav';
   if (lower.endsWith('.mp3')) return 'mp3';
   if (lower.endsWith('.caf')) return 'wav';
+  if (lower.endsWith('.3gp')) return '3gp';
   if (lower.endsWith('.m4a') || lower.endsWith('.mp4') || lower.endsWith('.aac')) return 'mp4';
   return 'mp4';
+}
+
+/** 百炼支持的 m4a 单声道语音参数（避免 Android 3gp / iOS 过大立体声文件） */
+function speechRecordingOptions(Audio: ExpoAv['Audio']) {
+  const base = Audio.RecordingOptionsPresets.HIGH_QUALITY;
+  return {
+    ...base,
+    isMeteringEnabled: false,
+    android: {
+      ...base.android,
+      extension: '.m4a',
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 64000,
+    },
+    ios: {
+      ...base.ios,
+      extension: '.m4a',
+      sampleRate: 16000,
+      numberOfChannels: 1,
+      bitRate: 64000,
+    },
+  };
 }
 
 /** 已配置百炼密钥且本机已编入 expo-av 时启用云端听写（Qwen3-ASR-Flash） */
@@ -92,18 +132,29 @@ export async function startCloudRecording(): Promise<void> {
     recording = null;
   }
   const rec = new Audio.Recording();
-  await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+  await rec.prepareToRecordAsync(speechRecordingOptions(Audio));
   await rec.startAsync();
   recording = rec;
+  recordingStartedAt = Date.now();
   clientLog('asr.record.start', {});
 }
 
 export async function stopCloudRecordingAndTranscribe(): Promise<string> {
   if (!recording) return '';
+  let durationSec = getCloudRecordingDurationSec();
+  try {
+    const status = await recording.getStatusAsync();
+    if (status.durationMillis > 0) {
+      durationSec = status.durationMillis / 1000;
+    }
+  } catch {
+    // 用 wall clock 兜底
+  }
   await recording.stopAndUnloadAsync();
   await new Promise((r) => setTimeout(r, 120));
   const uri = recording.getURI();
   recording = null;
+  recordingStartedAt = 0;
   if (!uri) {
     clientLog('asr.record.no_uri', {});
     throw new Error('录音文件没生成，请再试一次');
@@ -116,10 +167,22 @@ export async function stopCloudRecordingAndTranscribe(): Promise<string> {
       throw new Error('录音太短或为空，请按住多说一会儿');
     }
 
-    const format = audioFormatFromUri(uri);
-    clientLog('asr.transcribe.request', { format, bytes: base64.length });
+    const payloadMb = qwenAsrPayloadSizeMb(base64);
+    const limit = getQwenAsrLimitViolation(base64, durationSec);
+    if (limit) {
+      clientLog('asr.transcribe.limit', {
+        reason: limit,
+        durationSec,
+        bytes: base64.length,
+        payloadMb,
+      });
+      throw new Error(qwenAsrLimitMessage(limit, base64));
+    }
 
-    const res = await api.transcribeAudio({ audioBase64: base64, format });
+    const format = audioFormatFromUri(uri);
+    clientLog('asr.transcribe.request', { format, bytes: base64.length, durationSec, payloadMb });
+
+    const res = await api.transcribeAudio({ audioBase64: base64, format, durationSec });
     clientLog('asr.transcribe.ok', { chars: res.data.text.length });
     return res.data.text.trim();
   } catch (e) {
@@ -145,4 +208,5 @@ export async function cancelCloudRecording(): Promise<void> {
     // ignore
   }
   recording = null;
+  recordingStartedAt = 0;
 }

@@ -169,8 +169,11 @@ export const api = {
   ocrImage: (body: { imageBase64: string; mimeType?: string; purpose?: string }) =>
     local().ocrImage(body),
 
-  transcribeAudio: (body: { audioBase64: string; format?: string }) =>
-    local().transcribeAudio(body),
+  transcribeAudio: (body: {
+    audioBase64: string;
+    format?: string;
+    durationSec?: number;
+  }) => local().transcribeAudio(body),
 
   getZenMuxStatus: () => local().getZenMuxStatus(),
 

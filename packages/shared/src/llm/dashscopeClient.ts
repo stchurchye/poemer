@@ -1,8 +1,11 @@
 import {
   audioMimeFromAsrFormat,
   DASHSCOPE_COMPAT_CHAT_ENDPOINT,
+  formatQwenAsrApiError,
+  getQwenAsrLimitViolation,
   QWEN_ASR_MODEL,
   qwenAsrLanguageForDialect,
+  qwenAsrLimitMessage,
 } from './qwenAsr.js';
 import {
   DASHSCOPE_TTS_ENDPOINT,
@@ -113,6 +116,7 @@ type DashScopeAsrResponse = {
   }>;
   message?: string;
   code?: string;
+  error?: { message?: string; code?: string; type?: string };
 };
 
 export async function qwen3AsrTranscribe(opts: {
@@ -120,9 +124,13 @@ export async function qwen3AsrTranscribe(opts: {
   audioBase64: string;
   format: string;
   dialect?: ReplyDialect;
+  durationSec?: number;
 }): Promise<string> {
   const raw = opts.audioBase64.replace(/\s/g, '');
   if (!raw) throw new DashScopeError('音频数据为空');
+
+  const limit = getQwenAsrLimitViolation(raw, opts.durationSec);
+  if (limit) throw new DashScopeError(qwenAsrLimitMessage(limit, raw), 400);
 
   const mime = audioMimeFromAsrFormat(opts.format);
   const dataUri = `data:${mime};base64,${raw}`;
@@ -159,7 +167,8 @@ export async function qwen3AsrTranscribe(opts: {
   const text = json.choices?.[0]?.message?.content?.trim() ?? '';
 
   if (!res.ok || !text) {
-    const msg = json.message || json.code || `语音识别失败（${res.status}）`;
+    const rawMsg = json.error?.message || json.message || json.code;
+    const msg = formatQwenAsrApiError(rawMsg, res.status);
     throw new DashScopeError(msg, res.status);
   }
 

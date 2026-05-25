@@ -18,6 +18,7 @@ export declare function qwen3AsrTranscribe(opts: {
     audioBase64: string;
     format: string;
     dialect?: ReplyDialect;
+    durationSec?: number;
 }): Promise<string>;
 export declare function verifyDashScopeKey(apiKey: string): Promise<void>;
 //# sourceMappingURL=dashscopeClient.d.ts.map
