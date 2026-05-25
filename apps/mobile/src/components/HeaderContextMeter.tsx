@@ -41,8 +41,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flexShrink: 0,
-    marginLeft: 6,
-    gap: 8,
+    gap: 6,
   },
   percent: {
     color: colors.textMuted,

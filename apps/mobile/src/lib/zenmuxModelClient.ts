@@ -1,9 +1,22 @@
 import type { ModelClient, ModelCompletionInput } from '@shiren/engine';
-import { ZenMuxError, zenmuxCompleteMessages } from '@shiren/shared';
+import { ZenMuxError, ZENMUX_MODEL_FLASH_LITE, zenmuxCompleteMessages } from '@shiren/shared';
 import { getZenMuxApiKey } from './zenmuxKey';
 import { LocalModelError } from './localModelClient';
 
-export function createZenMuxModelClient(): ModelClient {
+export function createZenMuxModelClient(options?: {
+  model?: string;
+  webSearch?: boolean;
+}): ModelClient {
+  const defaultModel = options?.model ?? ZENMUX_MODEL_FLASH_LITE;
+  const webSearch = options?.webSearch
+    ? {
+        enabled: true as const,
+        city: 'Zhongshan',
+        region: 'Guangdong',
+        country: 'CN',
+        timezone: 'Asia/Shanghai',
+      }
+    : undefined;
   return {
     async complete(input: ModelCompletionInput) {
       const key = await getZenMuxApiKey();
@@ -11,7 +24,7 @@ export function createZenMuxModelClient(): ModelClient {
         throw new LocalModelError(
           '请先在设置里填写 ZenMux 密钥',
           'MODEL_KEY_MISSING',
-          '问问题文字回答与带图问问题需要 ZenMux（Gemini / Opus）。',
+          '问问题文字与带图回答需要 ZenMux（Claude Opus 4.6）。',
         );
       }
       try {
@@ -20,6 +33,8 @@ export function createZenMuxModelClient(): ModelClient {
           messages: input.messages,
           maxTokens: input.maxTokens,
           temperature: input.temperature,
+          model: defaultModel,
+          webSearch,
         });
         return { text };
       } catch (e) {

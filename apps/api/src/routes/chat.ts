@@ -3,7 +3,6 @@ import type { AppVariables } from '../types.js';
 import { jsonError } from '../lib/errors.js';
 import { log } from '../lib/logger.js';
 import {
-  deepseekChatFromMessages,
   deepseekChatIntentFromMessages,
   summarizeChatSessionTitle,
   parseReplyDialect,
@@ -35,7 +34,8 @@ import {
   chatImageTurnLlmNotice,
   chatPendingUserForContext,
   chatStoredUserContent,
-  ZENMUX_MODEL_CHAT_IMAGES,
+  ZENMUX_MODEL_CHAT,
+  zenmuxCompleteMessages,
 } from '@shiren/shared';
 import { getZenMuxKey, handleZenMuxError } from '../lib/zenmux-handler.js';
 import { zenmuxChatWithImages, ZenMuxError, type ZenMuxChatImage } from '../lib/zenmux.js';
@@ -265,30 +265,35 @@ chatRouter.post('/sessions/:id/messages', async (c) => {
   }
 
   let reply: string;
-  let modelLabel = 'deepseek-v4-pro';
+  let modelLabel = ZENMUX_MODEL_CHAT;
   try {
+    let zenmuxKey: string;
+    try {
+      zenmuxKey = getZenMuxKey(c);
+    } catch (e) {
+      return handleZenMuxError(c, e);
+    }
     if (imageCount > 0) {
-      let zenmuxKey: string;
-      try {
-        zenmuxKey = getZenMuxKey(c);
-      } catch (e) {
-        return handleZenMuxError(c, e);
-      }
       reply = await zenmuxChatWithImages({
         apiKey: zenmuxKey,
         messages: prepared.messages,
         images,
         imageNotice: chatImageTurnLlmNotice(imageCount),
       });
-      modelLabel = ZENMUX_MODEL_CHAT_IMAGES;
     } else {
-      reply = await deepseekChatFromMessages(apiKey, prepared.messages);
+      reply = await zenmuxCompleteMessages({
+        apiKey: zenmuxKey,
+        messages: prepared.messages,
+        model: ZENMUX_MODEL_CHAT,
+        maxTokens: 4096,
+        temperature: 0.5,
+      });
     }
   } catch (e) {
     if (e instanceof ZenMuxError && e.message === 'ZENMUX_KEY_MISSING') {
       return jsonError(c, ErrorCodes.ZENMUX_KEY_MISSING, 400);
     }
-    if (imageCount > 0 && e instanceof ZenMuxError) {
+    if (e instanceof ZenMuxError) {
       return handleZenMuxError(c, e);
     }
     return handleAiError(c, e);

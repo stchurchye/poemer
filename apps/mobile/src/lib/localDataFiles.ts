@@ -8,6 +8,7 @@ import {
   makeShirenExportBundle,
   type PersistedStore,
 } from '@shiren/shared';
+import { zh } from '../locales/zh-CN';
 
 const ROOT = FileSystem.documentDirectory ?? '';
 const EXPORTS_DIR = `${ROOT}exports/`;
@@ -97,7 +98,7 @@ function exportFileName(date = new Date()): string {
     pad(date.getHours()),
     pad(date.getMinutes()),
   ].join('');
-  return `诗人数据-${stamp}.shiren.json`;
+  return `${zh.app.exportFilePrefix}-${stamp}.shiren.json`;
 }
 
 export async function getLocalDataStatus(): Promise<LocalDataStatus> {
@@ -151,7 +152,7 @@ export async function exportLocalDataPackage(
     try {
       await Sharing.shareAsync(saved.path, {
         mimeType: 'application/json',
-        dialogTitle: '导出诗人数据',
+        dialogTitle: zh.app.exportDialogTitle,
         UTI: 'public.json',
       });
       shared = true;

@@ -1,4 +1,4 @@
-import { ZENMUX_BASE_URL, ZENMUX_MODEL_CHAT_IMAGES, ZENMUX_MODEL_FLASH_LITE } from './zenmux.js';
+import { ZENMUX_ANTHROPIC_MESSAGES_URL, ZENMUX_BASE_URL, ZENMUX_MODEL_CHAT, ZENMUX_MODEL_FLASH_LITE, } from './zenmux.js';
 export class ZenMuxError extends Error {
     status;
     constructor(message, status) {
@@ -7,30 +7,196 @@ export class ZenMuxError extends Error {
         this.name = 'ZenMuxError';
     }
 }
+function buildWebSearchBody(webSearch) {
+    if (!webSearch?.enabled)
+        return undefined;
+    const userLocation = {
+        type: 'approximate',
+        country: webSearch.country?.trim() || 'CN',
+        timezone: webSearch.timezone?.trim() || 'Asia/Shanghai',
+    };
+    const city = webSearch.city?.trim();
+    if (city)
+        userLocation.city = city;
+    const region = webSearch.region?.trim();
+    if (region)
+        userLocation.region = region;
+    return {
+        search_context_size: 'medium',
+        user_location: userLocation,
+    };
+}
+function buildAnthropicWebSearchTool(webSearch) {
+    const userLocation = {
+        type: 'approximate',
+        country: webSearch.country?.trim() || 'CN',
+        timezone: webSearch.timezone?.trim() || 'Asia/Shanghai',
+    };
+    const city = webSearch.city?.trim();
+    if (city)
+        userLocation.city = city;
+    const region = webSearch.region?.trim();
+    if (region)
+        userLocation.region = region;
+    return {
+        type: 'web_search_20250305',
+        name: 'web_search',
+        max_uses: 3,
+        user_location: userLocation,
+    };
+}
+function appendCitationLines(content, cites) {
+    if (cites.length === 0)
+        return content;
+    const unique = [...new Set(cites)];
+    return `${content}\n\n参考来源：\n${unique.map((c) => `- ${c}`).join('\n')}`;
+}
+function appendUrlCitations(content, annotations) {
+    if (!annotations?.length)
+        return content;
+    const cites = annotations
+        .filter((a) => a.type === 'url_citation' && a.url_citation?.url?.trim())
+        .map((a) => {
+        const c = a.url_citation;
+        const title = c.title?.trim();
+        const url = c.url.trim();
+        return title ? `${title}：${url}` : url;
+    });
+    return appendCitationLines(content, cites);
+}
+/** OpenAI 风格 messages → Anthropic system + 严格交替的 user/assistant */
+function toAnthropicMessages(messages) {
+    const systemParts = [];
+    const turns = [];
+    for (const msg of messages) {
+        const text = msg.content.trim();
+        if (!text)
+            continue;
+        if (msg.role === 'system') {
+            systemParts.push(text);
+            continue;
+        }
+        if (msg.role !== 'user' && msg.role !== 'assistant')
+            continue;
+        const last = turns[turns.length - 1];
+        if (last?.role === msg.role) {
+            last.content = `${last.content}\n\n${text}`;
+        }
+        else {
+            turns.push({ role: msg.role, content: text });
+        }
+    }
+    if (turns.length > 0 && turns[0].role === 'assistant') {
+        turns.unshift({ role: 'user', content: '（继续上文对话）' });
+    }
+    return {
+        system: systemParts.length > 0 ? systemParts.join('\n\n') : undefined,
+        messages: turns,
+    };
+}
+function parseAnthropicResponse(body) {
+    const blocks = body.content ?? [];
+    const textParts = blocks
+        .filter((b) => b.type === 'text' && b.text?.trim())
+        .map((b) => b.text.trim());
+    const searchCites = [];
+    for (const block of blocks) {
+        if (block.type !== 'web_search_tool_result' || !Array.isArray(block.content))
+            continue;
+        for (const item of block.content) {
+            if (item.type !== 'web_search_result')
+                continue;
+            const url = item.url?.trim();
+            if (!url)
+                continue;
+            const title = item.title?.trim();
+            searchCites.push(title ? `${title}：${url}` : url);
+        }
+    }
+    const answer = textParts.join('\n').trim();
+    if (!answer) {
+        throw new ZenMuxError('ZenMux 没有返回内容');
+    }
+    return appendCitationLines(answer, searchCites);
+}
+async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
+    const { system, messages: anthropicMessages } = toAnthropicMessages(messages);
+    if (anthropicMessages.length === 0) {
+        throw new ZenMuxError('消息为空');
+    }
+    const payload = {
+        model: options.model,
+        max_tokens: options.maxTokens ?? 4096,
+        temperature: options.temperature ?? 0.5,
+        messages: anthropicMessages,
+        tools: [buildAnthropicWebSearchTool(options.webSearch)],
+    };
+    if (system) {
+        payload.system = system;
+    }
+    const res = await fetch(ZENMUX_ANTHROPIC_MESSAGES_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(payload),
+    });
+    const json = (await res.json());
+    if (!res.ok) {
+        const msg = (typeof json.error === 'object' && json.error?.message) ||
+            `ZenMux Anthropic 请求失败（${res.status}）`;
+        throw new ZenMuxError(msg, res.status);
+    }
+    return parseAnthropicResponse(json);
+}
+function isPlainTextMessages(messages) {
+    return messages.every((m) => typeof m.content === 'string');
+}
+function shouldUseAnthropicWebSearch(messages, options) {
+    return Boolean(options?.webSearch?.enabled &&
+        (options.model ?? '').startsWith('anthropic/') &&
+        isPlainTextMessages(messages));
+}
 async function zenmuxChat(apiKey, messages, options) {
+    const model = options?.model ?? ZENMUX_MODEL_FLASH_LITE;
+    if (shouldUseAnthropicWebSearch(messages, options)) {
+        return callAnthropicMessagesWithWebSearch(apiKey, messages, {
+            ...options,
+            model,
+            webSearch: options.webSearch,
+        });
+    }
+    const webSearchOptions = buildWebSearchBody(options?.webSearch);
+    const body = {
+        model,
+        messages,
+        stream: false,
+        max_tokens: options?.maxTokens ?? 4096,
+        temperature: options?.temperature ?? 0.2,
+    };
+    if (webSearchOptions) {
+        body.web_search_options = webSearchOptions;
+    }
     const res = await fetch(`${ZENMUX_BASE_URL}/chat/completions`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-            model: options?.model ?? ZENMUX_MODEL_FLASH_LITE,
-            messages,
-            stream: false,
-            max_tokens: options?.maxTokens ?? 4096,
-            temperature: options?.temperature ?? 0.2,
-        }),
+        body: JSON.stringify(body),
     });
     const json = (await res.json());
     if (!res.ok) {
         const msg = json.error?.message ?? `ZenMux 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
-    const content = json.choices?.[0]?.message?.content?.trim();
-    if (!content)
+    const message = json.choices?.[0]?.message;
+    const raw = message?.content?.trim();
+    if (!raw)
         throw new ZenMuxError('ZenMux 没有返回内容');
-    return content;
+    return appendUrlCitations(raw, message?.annotations);
 }
 function imageDataUrl(imageBase64, mimeType) {
     const mime = mimeType?.trim() || 'image/jpeg';
@@ -76,17 +242,18 @@ export async function zenmuxChatWithImages(params) {
         content: [{ type: 'text', text: userText }, ...imageParts],
     });
     return zenmuxChat(params.apiKey, zenmuxMessages, {
-        model: ZENMUX_MODEL_CHAT_IMAGES,
+        model: ZENMUX_MODEL_CHAT,
         maxTokens: 4096,
         temperature: 0.5,
     });
 }
-/** 多轮纯文本对话（默认 Gemini 3.1 Flash Lite） */
+/** 多轮纯文本对话（问问题回答，Claude Opus 4.6） */
 export async function zenmuxCompleteMessages(params) {
     return zenmuxChat(params.apiKey, params.messages, {
         maxTokens: params.maxTokens,
         temperature: params.temperature,
         model: params.model,
+        webSearch: params.webSearch,
     });
 }
 export async function verifyZenMuxKey(apiKey) {

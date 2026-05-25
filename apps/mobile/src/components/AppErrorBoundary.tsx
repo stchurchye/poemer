@@ -19,7 +19,7 @@ export class AppErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('[诗人] 界面异常', error, info.componentStack);
+    console.error('[小作家] 界面异常', error, info.componentStack);
   }
 
   render() {

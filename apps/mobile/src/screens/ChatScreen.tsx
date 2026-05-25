@@ -868,14 +868,13 @@ export function ChatScreen() {
               />
             ) : null}
             <View style={styles.headerRow}>
-              <View style={styles.headerTitleRow}>
+              <View style={styles.headerTitleGroup}>
                 <Text
                   style={[
                     styles.header,
-                    isTablet && styles.headerTablet,
                     { fontSize: isTablet ? typography.title + 2 : typography.title },
                   ]}
-                  numberOfLines={2}
+                  numberOfLines={1}
                 >
                   {zh.chat.title}
                 </Text>
@@ -986,28 +985,24 @@ const styles = StyleSheet.create({
   chatPane: { flex: 1, minHeight: 0 },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
     marginBottom: 12,
     flexShrink: 0,
   },
-  headerTitleRow: {
+  headerTitleGroup: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    flexWrap: 'wrap',
     minWidth: 0,
-    marginRight: 8,
+    gap: 6,
   },
   header: {
-    flex: 0,
     flexShrink: 1,
     fontWeight: '700',
     color: colors.text,
   },
-  headerTablet: { marginBottom: 0 },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',

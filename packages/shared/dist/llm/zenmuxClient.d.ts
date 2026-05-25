@@ -6,6 +6,13 @@ export declare class ZenMuxError extends Error {
     status?: number | undefined;
     constructor(message: string, status?: number | undefined);
 }
+export type ZenMuxWebSearchOptions = {
+    enabled: boolean;
+    city?: string;
+    country?: string;
+    region?: string;
+    timezone?: string;
+};
 /** 识图识字（Gemini 多模态） */
 export declare function zenmuxOcr(params: {
     apiKey: string;
@@ -23,7 +30,7 @@ export declare function zenmuxChatWithImages(params: {
     images: ZenMuxChatImage[];
     imageNotice: string;
 }): Promise<string>;
-/** 多轮纯文本对话（默认 Gemini 3.1 Flash Lite） */
+/** 多轮纯文本对话（问问题回答，Claude Opus 4.6） */
 export declare function zenmuxCompleteMessages(params: {
     apiKey: string;
     messages: Array<{
@@ -33,6 +40,7 @@ export declare function zenmuxCompleteMessages(params: {
     maxTokens?: number;
     temperature?: number;
     model?: string;
+    webSearch?: ZenMuxWebSearchOptions;
 }): Promise<string>;
 export declare function verifyZenMuxKey(apiKey: string): Promise<void>;
 //# sourceMappingURL=zenmuxClient.d.ts.map

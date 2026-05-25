@@ -1,11 +1,14 @@
 import { Platform } from 'react-native';
 import type { ExpoSpeechRecognitionErrorCode } from 'expo-speech-recognition';
+import { zh } from '../../locales/zh-CN';
+
+const appName = zh.app.name;
 
 const IOS_SERVICE_NOT_ALLOWED =
   '听写服务未就绪。请在「设置 → Siri 与搜索」打开 Siri，并在「设置 → 键盘」打开听写';
 
 const ANDROID_SERVICE_NOT_ALLOWED =
-  '听写服务未就绪。请在「设置 → 应用 → 诗人 → 权限」打开麦克风；并确认已安装 Google 应用或系统语音识别，首次使用可能需要下载中文离线语音包';
+  `听写服务未就绪。请在「设置 → 应用 → ${appName} → 权限」打开麦克风；并确认已安装 Google 应用或系统语音识别，首次使用可能需要下载中文离线语音包`;
 
 const IOS_RECOGNIZER_INIT_HINT =
   '听写引擎没启动成功。\n\n' +
@@ -14,14 +17,14 @@ const IOS_RECOGNIZER_INIT_HINT =
 
 const ANDROID_RECOGNIZER_INIT_HINT =
   '听写引擎没启动成功。\n\n' +
-  '• 请在「设置 → 应用 → 诗人 → 权限」打开麦克风\n' +
+  `• 请在「设置 → 应用 → ${appName} → 权限」打开麦克风\n` +
   '• 确认已安装 Google 应用，或在系统设置里启用语音识别\n' +
   '• 首次使用中文听写时，请按提示下载离线语音包后再试';
 
 const MESSAGES: Partial<Record<ExpoSpeechRecognitionErrorCode, string>> = {
   'not-allowed':
     Platform.OS === 'android'
-      ? '需要允许使用麦克风，请在「设置 → 应用 → 诗人 → 权限」里打开'
+      ? `需要允许使用麦克风，请在「设置 → 应用 → ${appName} → 权限」里打开`
       : '需要允许使用麦克风和语音识别，请在设置里打开',
   'no-speech': '没听清您说的话，请靠近手机再说一次，不着急',
   'speech-timeout': '没听清您说的话，请靠近手机再说一次，不着急',
