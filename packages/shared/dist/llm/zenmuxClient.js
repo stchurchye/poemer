@@ -94,7 +94,7 @@ function toAnthropicMessages(messages) {
         messages: turns,
     };
 }
-function parseAnthropicResponse(body) {
+function parseAnthropicResponse(body, appendCitations = false) {
     const blocks = body.content ?? [];
     const textParts = blocks
         .filter((b) => b.type === 'text' && b.text?.trim())
@@ -117,7 +117,7 @@ function parseAnthropicResponse(body) {
     if (!answer) {
         throw new ZenMuxError('ZenMux 没有返回内容');
     }
-    return appendCitationLines(answer, searchCites);
+    return appendCitations ? appendCitationLines(answer, searchCites) : answer;
 }
 async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
     const { system, messages: anthropicMessages } = toAnthropicMessages(messages);
@@ -149,7 +149,7 @@ async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
             `ZenMux Anthropic 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
-    return parseAnthropicResponse(json);
+    return parseAnthropicResponse(json, options.appendCitations);
 }
 function isPlainTextMessages(messages) {
     return messages.every((m) => typeof m.content === 'string');
@@ -196,7 +196,9 @@ async function zenmuxChat(apiKey, messages, options) {
     const raw = message?.content?.trim();
     if (!raw)
         throw new ZenMuxError('ZenMux 没有返回内容');
-    return appendUrlCitations(raw, message?.annotations);
+    return options?.appendCitations
+        ? appendUrlCitations(raw, message?.annotations)
+        : raw;
 }
 function imageDataUrl(imageBase64, mimeType) {
     const mime = mimeType?.trim() || 'image/jpeg';
@@ -247,7 +249,7 @@ export async function zenmuxChatWithImages(params) {
         temperature: 0.5,
     });
 }
-/** 多轮纯文本对话（问问题回答，Claude Opus 4.6） */
+/** 多轮纯文本对话（问问题回答，Claude Sonnet 4.6） */
 export async function zenmuxCompleteMessages(params) {
     return zenmuxChat(params.apiKey, params.messages, {
         maxTokens: params.maxTokens,

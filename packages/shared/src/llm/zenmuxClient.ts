@@ -44,6 +44,8 @@ type ZenMuxChatOptions = {
   temperature?: number;
   model?: string;
   webSearch?: ZenMuxWebSearchOptions;
+  /** 是否在回复末尾自动拼接「参考来源」；问问题默认关闭 */
+  appendCitations?: boolean;
 };
 
 function buildWebSearchBody(webSearch?: ZenMuxWebSearchOptions): Record<string, unknown> | undefined {
@@ -145,9 +147,10 @@ type AnthropicContentBlock = {
   content?: Array<{ type?: string; title?: string; url?: string }>;
 };
 
-function parseAnthropicResponse(body: {
-  content?: AnthropicContentBlock[];
-}): string {
+function parseAnthropicResponse(
+  body: { content?: AnthropicContentBlock[] },
+  appendCitations = false,
+): string {
   const blocks = body.content ?? [];
   const textParts = blocks
     .filter((b) => b.type === 'text' && b.text?.trim())
@@ -169,7 +172,7 @@ function parseAnthropicResponse(body: {
   if (!answer) {
     throw new ZenMuxError('ZenMux 没有返回内容');
   }
-  return appendCitationLines(answer, searchCites);
+  return appendCitations ? appendCitationLines(answer, searchCites) : answer;
 }
 
 async function callAnthropicMessagesWithWebSearch(
@@ -215,7 +218,7 @@ async function callAnthropicMessagesWithWebSearch(
     throw new ZenMuxError(msg, res.status);
   }
 
-  return parseAnthropicResponse(json);
+  return parseAnthropicResponse(json, options.appendCitations);
 }
 
 function isPlainTextMessages(
@@ -290,7 +293,9 @@ async function zenmuxChat(
   const message = json.choices?.[0]?.message;
   const raw = message?.content?.trim();
   if (!raw) throw new ZenMuxError('ZenMux 没有返回内容');
-  return appendUrlCitations(raw, message?.annotations);
+  return options?.appendCitations
+    ? appendUrlCitations(raw, message?.annotations)
+    : raw;
 }
 
 function imageDataUrl(imageBase64: string, mimeType?: string): string {
@@ -360,7 +365,7 @@ export async function zenmuxChatWithImages(params: {
   });
 }
 
-/** 多轮纯文本对话（问问题回答，Claude Opus 4.6） */
+/** 多轮纯文本对话（问问题回答，Claude Sonnet 4.6） */
 export async function zenmuxCompleteMessages(params: {
   apiKey: string;
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;

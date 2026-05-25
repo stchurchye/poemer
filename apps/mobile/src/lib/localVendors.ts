@@ -155,7 +155,7 @@ export async function getZenMuxStatusLocal() {
     configured: Boolean(key),
     source: 'local',
     model: ZENMUX_MODEL_CHAT,
-    displayName: 'ZenMux · Claude Opus 4.6（问问题）',
+    displayName: 'ZenMux · Claude Sonnet 4.6（问问题）',
   };
 }
 

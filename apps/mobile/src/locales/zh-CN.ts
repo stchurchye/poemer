@@ -316,7 +316,7 @@ export const zh = {
     deepseekNotConfigured: '未设置时，问问题/写作意图、改稿与侧栏聊天不可用',
     deepseekVerifyOk: '密钥可用，写作与问问题已就绪',
     deepseekVerifyFail: '密钥不可用，请检查是否复制完整',
-    zenmuxTitle: '问问题回答密钥（ZenMux · Claude Opus 4.6）',
+    zenmuxTitle: '问问题回答密钥（ZenMux · Claude Sonnet 4.6）',
     zenmuxPlaceholder: '粘贴密钥',
     zenmuxSave: '保存',
     zenmuxSaveOk: '密钥已保存并通过测试',
