@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+import { useChatMessageStyles } from '../theme/chatMessage';
 import {
   ActivityIndicator,
   FlatList,
@@ -53,8 +57,6 @@ import { AssistantGuidePromptBlock } from './AssistantGuidePromptBlock';
 import { ContextHubSheet } from './ContextHubSheet';
 import { ContextUsageDetailModal } from './ContextUsageDetailModal';
 import type { AssistantHeaderContext, AssistantHeaderReadAloud } from './WritingAssistantSheet';
-import { colors } from '../theme/colors';
-import { chatMessageStyles } from '../theme/chatMessage';
 import { useTypography } from '../theme/layout';
 import { RevisionBasisBlock } from './RevisionBasisBlock';
 import {
@@ -170,6 +172,10 @@ export function WritingAssistantPanel({
   onHeaderContext,
   guideNav,
 }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createWritingAssistantPanelStyles);
+  const chatMessageStyles = useChatMessageStyles();
+
   const { bodyFontSize, bodyLineHeight, replyLineHeight, buttonFontSize, captionFontSize } =
     useTypography('dialog');
   const [messages, setMessages] = useState<WritingUiMessage[]>([]);
@@ -1514,7 +1520,8 @@ export function WritingAssistantPanel({
   );
 }
 
-const styles = StyleSheet.create({
+function createWritingAssistantPanelStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   panel: { flex: 1, minHeight: 0, backgroundColor: 'transparent' },
   contextOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1620,3 +1627,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+}

@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ContextPreviewBlock } from '@shiren/shared';
 import { formatTokenCount } from '@shiren/shared';
-import { colors } from '../theme/colors';
 import { useLayout } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 
@@ -13,6 +15,8 @@ type Props = {
 };
 
 export function ContextPreviewBlockRow({ block, selected, onToggle }: Props) {
+  const styles = useThemedStyles(createContextPreviewBlockRowStyles);
+
   const { bodyFontSize, captionFontSize, smallFontSize } = useLayout();
   const [expanded, setExpanded] = useState(false);
   const omitted = block.omittedByBudget === true;
@@ -72,7 +76,8 @@ export function ContextPreviewBlockRow({ block, selected, onToggle }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createContextPreviewBlockRowStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   row: {
     borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
@@ -150,3 +155,4 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 });
+}

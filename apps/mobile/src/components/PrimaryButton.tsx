@@ -1,7 +1,9 @@
 import { Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
-import { colors, typography } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
 import { lineHeightForFontSize } from '../theme/chromeText';
 import { radius, touch } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   title: string;
@@ -11,6 +13,34 @@ interface Props {
   disabled?: boolean;
 }
 
+function createPrimaryButtonStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    base: {
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      minHeight: touch.comfort,
+      justifyContent: 'center',
+    },
+    primary: { backgroundColor: colors.primary },
+    secondary: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    ghost: { backgroundColor: 'transparent' },
+    disabled: { opacity: 0.5 },
+    text: {
+      fontSize: typography.button,
+      lineHeight: lineHeightForFontSize(typography.button),
+      fontWeight: '600',
+    },
+    textPrimary: { color: colors.onPrimary },
+    textSecondary: { color: colors.text },
+  });
+}
+
 export function PrimaryButton({
   title,
   onPress,
@@ -18,6 +48,8 @@ export function PrimaryButton({
   style,
   disabled,
 }: Props) {
+  const styles = useThemedStyles(createPrimaryButtonStyles);
+
   return (
     <Pressable
       style={[
@@ -43,29 +75,3 @@ export function PrimaryButton({
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  base: {
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    minHeight: touch.comfort,
-    justifyContent: 'center',
-  },
-  primary: { backgroundColor: colors.primary },
-  secondary: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  ghost: { backgroundColor: 'transparent' },
-  disabled: { opacity: 0.5 },
-  text: {
-    fontSize: typography.button,
-    lineHeight: lineHeightForFontSize(typography.button),
-    fontWeight: '600',
-  },
-  textPrimary: { color: colors.onPrimary },
-  textSecondary: { color: colors.text },
-});

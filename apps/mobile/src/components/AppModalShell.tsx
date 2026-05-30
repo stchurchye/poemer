@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
-import { modalStyles } from '../theme/modalStyles';
+import { useModalStyles } from '../theme/modalStyles';
 import { useTextStyles } from '../theme/useTextStyles';
 
 type Props = {
@@ -27,6 +27,7 @@ export function AppModalShell({
   closeAccessibilityLabel = '关闭',
   dismissOnBackdropPress = true,
 }: Props) {
+  const modalStyles = useModalStyles();
   const text = useTextStyles();
 
   if (variant === 'headerOnly') {

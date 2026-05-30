@@ -1,5 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { useLayout } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 
@@ -10,6 +12,8 @@ type Props = {
 };
 
 export function ContextHubSheet({ visible, onClose, onComposeContext }: Props) {
+  const styles = useThemedStyles(createContextHubSheetStyles);
+
   const { titleFontSize, bodyFontSize, captionFontSize } = useLayout();
 
   return (
@@ -39,7 +43,8 @@ export function ContextHubSheet({ visible, onClose, onComposeContext }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createContextHubSheetStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: colors.backdrop,
@@ -81,3 +86,4 @@ const styles = StyleSheet.create({
     lineHeight: 32,
   },
 });
+}

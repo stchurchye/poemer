@@ -1,8 +1,9 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
-import { modalStyles } from '../theme/modalStyles';
+import type { ColorPalette } from '../theme/colors';
+import { useModalStyles } from '../theme/modalStyles';
 import { radius, touch } from '../theme/tokens';
 import { useTextStyles } from '../theme/useTextStyles';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { AppAlertButton } from '../lib/appAlert';
 
 type Props = {
@@ -13,8 +14,60 @@ type Props = {
   onDismiss: () => void;
 };
 
+function createAppAlertDialogStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    card: {
+      paddingHorizontal: 24,
+      paddingTop: 28,
+      paddingBottom: 22,
+      borderRadius: radius.md,
+    },
+    title: {
+      textAlign: 'center',
+      marginBottom: 12,
+    },
+    message: {
+      textAlign: 'center',
+      color: colors.textMuted,
+      marginBottom: 24,
+    },
+    btnRow: {
+      gap: 12,
+    },
+    btnRowHorizontal: {
+      flexDirection: 'row',
+    },
+    btnRowVertical: {
+      flexDirection: 'column',
+    },
+    btn: {
+      minHeight: touch.comfort,
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderRadius: radius.pill,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    btnFlex: {
+      flex: 1,
+    },
+    btnPressed: {
+      opacity: 0.85,
+    },
+    btnLabel: {
+      textAlign: 'center',
+    },
+    btnLabelDestructive: {
+      color: colors.error,
+    },
+  });
+}
+
 export function AppAlertDialog({ visible, title, message, buttons, onDismiss }: Props) {
+  const modalStyles = useModalStyles();
   const text = useTextStyles();
+  const styles = useThemedStyles(createAppAlertDialogStyles);
   const rowButtons = buttons.length === 2;
 
   const runButton = (btn: AppAlertButton) => {
@@ -74,51 +127,3 @@ export function AppAlertDialog({ visible, title, message, buttons, onDismiss }: 
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 22,
-    borderRadius: radius.md,
-  },
-  title: {
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  message: {
-    textAlign: 'center',
-    color: colors.textMuted,
-    marginBottom: 24,
-  },
-  btnRow: {
-    gap: 12,
-  },
-  btnRowHorizontal: {
-    flexDirection: 'row',
-  },
-  btnRowVertical: {
-    flexDirection: 'column',
-  },
-  btn: {
-    minHeight: touch.comfort,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnFlex: {
-    flex: 1,
-  },
-  btnPressed: {
-    opacity: 0.85,
-  },
-  btnLabel: {
-    textAlign: 'center',
-  },
-  btnLabelDestructive: {
-    color: colors.error,
-  },
-});

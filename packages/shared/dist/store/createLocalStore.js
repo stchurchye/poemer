@@ -103,6 +103,22 @@ export function createLocalStore(initial, deps) {
         documents.set(id, updated);
         return clone(updated);
     }
+    function hideDocument(id) {
+        const doc = documents.get(id);
+        if (!doc)
+            return undefined;
+        const updated = { ...doc, hiddenAt: now(), updatedAt: now() };
+        documents.set(id, updated);
+        return clone(updated);
+    }
+    function restoreDocument(id) {
+        const doc = documents.get(id);
+        if (!doc)
+            return undefined;
+        const updated = { ...doc, hiddenAt: null, updatedAt: now() };
+        documents.set(id, updated);
+        return clone(updated);
+    }
     function saveDocumentContent(documentId, chapterId, blockId, content) {
         const doc = documents.get(documentId);
         if (!doc)
@@ -115,6 +131,18 @@ export function createLocalStore(initial, deps) {
                 blocks: ch.blocks.map((b) => (b.id === blockId ? { ...b, content } : b)),
             };
         });
+        return updateDocument(documentId, { chapters });
+    }
+    function updateChapterTitle(documentId, chapterId, title) {
+        const doc = documents.get(documentId);
+        if (!doc)
+            return undefined;
+        const chapter = doc.chapters.find((c) => c.id === chapterId);
+        if (!chapter)
+            return undefined;
+        if (chapter.title === title)
+            return clone(doc);
+        const chapters = doc.chapters.map((ch) => ch.id === chapterId ? { ...ch, title } : ch);
         return updateDocument(documentId, { chapters });
     }
     function addChapter(documentId, title) {
@@ -368,7 +396,10 @@ export function createLocalStore(initial, deps) {
         listDocuments,
         getDocument,
         updateDocument,
+        hideDocument,
+        restoreDocument,
         saveDocumentContent,
+        updateChapterTitle,
         addChapter,
         createRevision,
         acceptRevision,

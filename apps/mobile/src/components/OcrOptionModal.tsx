@@ -1,8 +1,11 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { AppModalShell } from './AppModalShell';
-import { colors } from '../theme/colors';
 import { radius, touch } from '../theme/tokens';
 import { useTextStyles } from '../theme/useTextStyles';
+import { useOcrModalHintLineHeight } from './ocrModalTypography';
 
 type Option = { key: string; label: string; primary?: boolean };
 
@@ -16,11 +19,16 @@ type Props = {
 };
 
 export function OcrOptionModal({ visible, title, hint, options, onSelect, onClose }: Props) {
+  const styles = useThemedStyles(createOcrOptionModalStyles);
+
   const text = useTextStyles();
+  const hintLineHeight = useOcrModalHintLineHeight();
 
   return (
     <AppModalShell visible={visible} title={title} onClose={onClose} cardStyle={styles.card}>
-      {hint ? <Text style={[styles.hint, text.hint]}>{hint}</Text> : null}
+      {hint ? (
+        <Text style={[styles.hint, text.hint, { lineHeight: hintLineHeight }]}>{hint}</Text>
+      ) : null}
       <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
         {options.map((opt) => (
           <Pressable
@@ -41,9 +49,10 @@ export function OcrOptionModal({ visible, title, hint, options, onSelect, onClos
   );
 }
 
-const styles = StyleSheet.create({
+function createOcrOptionModalStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   card: { maxHeight: '85%' },
-  hint: { marginBottom: 16 },
+  hint: { marginTop: 0, marginBottom: 10 },
   list: { maxHeight: 420 },
   option: {
     borderWidth: 1,
@@ -63,3 +72,4 @@ const styles = StyleSheet.create({
   optionText: { fontWeight: '600' },
   optionTextPrimary: { color: colors.onPrimary, fontWeight: '700' },
 });
+}

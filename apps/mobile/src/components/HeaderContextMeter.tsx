@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { ContextUsageRing } from './ContextUsageRing';
-import { colors } from '../theme/colors';
 import { useTextStyles } from '../theme/useTextStyles';
 import { zh } from '../locales/zh-CN';
 
@@ -13,6 +15,8 @@ type Props = {
 
 /** 标题旁上下文占用：圆环贴标题，百分比在圆环右侧 */
 export function HeaderContextMeter({ ratio, loading, onPress, onLongPress }: Props) {
+  const styles = useThemedStyles(createHeaderContextMeterStyles);
+
   const text = useTextStyles();
 
   return (
@@ -36,7 +40,8 @@ export function HeaderContextMeter({ ratio, loading, onPress, onLongPress }: Pro
   );
 }
 
-const styles = StyleSheet.create({
+function createHeaderContextMeterStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   root: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -48,3 +53,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+}

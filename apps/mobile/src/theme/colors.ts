@@ -1,23 +1,17 @@
 import { DEFAULT_FONT_SIZE_PRESET, resolveFontMetrics } from './fontPresets';
 
-export const colors = {
+export const lightColors = {
   background: '#f5f7fa',
   surface: '#ffffff',
   text: '#1a1a1a',
   textMuted: '#8a8a9a',
   primary: '#4e6ef2',
   primarySoft: '#eef1fd',
-  /** 小助手回复区（极浅蓝灰，不刺眼） */
   assistantBg: '#f0f2f8',
-  /** 问答案意图确认条外层卡片 */
   intentConfirmBg: '#eef1f6',
-  /** 问答案意图确认条内文字区 */
   intentConfirmTextBg: '#e3e6ee',
-  /** 主色按钮上的文字 */
   onPrimary: '#ffffff',
-  /** 弹窗遮罩 */
   backdrop: 'rgba(0, 0, 10, 0.45)',
-  /** 主色浅描边 */
   primaryBorder: '#c8d2f8',
   primaryMutedText: '#3d56d4',
   insertBg: '#dff5e4',
@@ -31,6 +25,54 @@ export const colors = {
   waiting: '#f5f7fa',
   error: '#c62828',
   success: '#558b2f',
+  inputSurface: '#ffffff',
+  tabBar: '#ffffff',
+  tabActive: '#4e6ef2',
+  imageOverlay: 'rgba(0,0,0,0.55)',
+  imageOverlayText: '#ffffff',
+  /** 分享长图分隔线（导出路径 palette=lightColors） */
+  shareRuleDecor: '#e0d4c8',
+  markdownCodeBg: '#2d2a28',
+  markdownCodeText: '#f5f0ea',
+} as const;
+
+export const darkColors = {
+  background: '#121212',
+  surface: '#1c1c1e',
+  text: '#ffffff',
+  textMuted: '#8e8e93',
+  primary: '#4e6ef2',
+  primarySoft: '#333333',
+  assistantBg: '#121212',
+  intentConfirmBg: '#2c2c2e',
+  intentConfirmTextBg: '#3a3a3c',
+  onPrimary: '#ffffff',
+  backdrop: 'rgba(0, 0, 0, 0.65)',
+  primaryBorder: '#3d4a6e',
+  primaryMutedText: '#8fa3ff',
+  insertBg: '#1b3324',
+  insertBorder: '#4a7c59',
+  insertText: '#a5d6a7',
+  deleteBg: '#3a2224',
+  deleteBorder: '#8f4f4f',
+  deleteText: '#ef9a9a',
+  border: '#2c2c2e',
+  tabInactive: '#8e8e93',
+  waiting: '#1c1c1e',
+  error: '#ef5350',
+  success: '#81c784',
+  inputSurface: '#252525',
+  tabBar: '#000000',
+  tabActive: '#ffffff',
+  imageOverlay: 'rgba(0,0,0,0.65)',
+  imageOverlayText: '#ffffff',
+  shareRuleDecor: '#e0d4c8',
+  markdownCodeBg: '#2d2a28',
+  markdownCodeText: '#f5f0ea',
+} as const;
+
+export type ColorPalette = {
+  [K in keyof typeof lightColors]: string;
 };
 
 /** 壳层固定字号（默认 large，以系统默认正文为锚，不叠加系统 fontScale） */
@@ -42,6 +84,9 @@ export const typography = {
   title: shellFont.titleFontSize,
   caption: shellFont.captionFontSize,
   button: shellFont.buttonFontSize,
-  /** 次要说明、工具栏短文案 */
   small: shellFont.smallFontSize,
 };
+
+export function paletteForAppearance(appearance: 'light' | 'dark'): ColorPalette {
+  return appearance === 'dark' ? darkColors : lightColors;
+}

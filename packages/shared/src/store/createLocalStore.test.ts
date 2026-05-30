@@ -124,3 +124,59 @@ test('rollback creates accepted revision from target snapshot', () => {
   assert.equal(rolled?.status, 'accepted');
   assert.equal(store.getDocument(doc.id)?.chapters[0]!.blocks[0]!.content, '旧版');
 });
+
+test('acceptRevision on chapter 7 block keeps content when only title is updated', () => {
+  const store = createLocalStore(createEmptyPersistedStore(), {
+    now: () => '2026-05-22T00:00:00.000Z',
+    uuid: (() => {
+      let n = 0;
+      return () => `id-${++n}`;
+    })(),
+  });
+  let doc = store.createDocument('多章文稿');
+  for (let i = 0; i < 6; i++) {
+    doc = store.addChapter(doc.id)!;
+  }
+  const sorted = [...doc.chapters].sort((a, b) => a.order - b.order);
+  const chapter7 = sorted[6]!;
+  const blockId = chapter7.blocks[0]!.id;
+
+  const rev = store.createRevision({
+    documentId: doc.id,
+    blockId,
+    parentRevisionId: null,
+    snapshot: '第七章小助手正文',
+    previousSnapshot: '',
+    summary: '续写第七章',
+    source: 'ai',
+    status: 'pending',
+  });
+  store.acceptRevision(rev.id);
+
+  let afterAccept = store.getDocument(doc.id);
+  assert.equal(afterAccept?.chapters.find((c) => c.id === chapter7.id)?.blocks[0]?.content, '第七章小助手正文');
+
+  afterAccept = store.updateChapterTitle(doc.id, chapter7.id, '第七章童年');
+  assert.equal(afterAccept?.chapters.find((c) => c.id === chapter7.id)?.title, '第七章童年');
+  assert.equal(afterAccept?.chapters.find((c) => c.id === chapter7.id)?.blocks[0]?.content, '第七章小助手正文');
+});
+
+test('hideDocument sets hiddenAt; restoreDocument clears it', () => {
+  const store = createLocalStore(createEmptyPersistedStore(), {
+    now: () => '2026-05-22T00:00:00.000Z',
+    uuid: (() => {
+      let n = 0;
+      return () => `id-${++n}`;
+    })(),
+  });
+  const doc = store.createDocument('文');
+  assert.equal(doc.hiddenAt, null);
+
+  const hidden = store.hideDocument(doc.id);
+  assert.ok(hidden?.hiddenAt);
+  assert.equal(store.getDocument(doc.id)?.hiddenAt, hidden?.hiddenAt);
+
+  const restored = store.restoreDocument(doc.id);
+  assert.equal(restored?.hiddenAt, null);
+  assert.equal(store.getDocument(doc.id)?.hiddenAt, null);
+});

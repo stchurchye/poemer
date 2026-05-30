@@ -1,7 +1,10 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { PrimaryButton } from './PrimaryButton';
 import { copyTextToClipboard } from '../lib/copyToClipboard';
-import { colors, typography } from '../theme/colors';
 import { useTypography } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 
@@ -26,6 +29,8 @@ export function ChatIntentConfirmBar({
   confirmTitle = zh.chat.intentConfirm,
   cancelTitle = zh.chat.intentCancel,
 }: Props) {
+  const styles = useThemedStyles(createChatIntentConfirmBarStyles);
+
   const { bodyFontSize, bodyLineHeight, captionFontSize } = useTypography('dialog');
 
   return (
@@ -85,7 +90,8 @@ export function ChatIntentConfirmBar({
   );
 }
 
-const styles = StyleSheet.create({
+function createChatIntentConfirmBarStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   box: {
     backgroundColor: colors.intentConfirmBg,
     padding: 28,
@@ -114,3 +120,4 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: 10, marginTop: 24 },
   btn: { flex: 1 },
 });
+}

@@ -1,11 +1,13 @@
 import { Modal, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { ContextUsage } from '@shiren/shared';
 import {
   contextUsageForDisplay,
   formatTokenCount,
   getContextBreakdownSegmentsForDisplay,
 } from '@shiren/shared';
-import { colors } from '../theme/colors';
 import { radius } from '../theme/tokens';
 import { useLayout } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
@@ -18,6 +20,8 @@ type ContentProps = {
 };
 
 export function ContextUsageDetailContent({ usage, cardStyle, onCompact, compactBusy }: ContentProps) {
+  const styles = useThemedStyles(createContextUsageDetailModalStyles);
+
   const { bodyFontSize, smallFontSize } = useLayout();
   const display = contextUsageForDisplay(usage);
   const percent = Math.round(display.ratio * 100);
@@ -103,6 +107,8 @@ export function ContextUsageDetailModal({
   onCompact,
   compactBusy,
 }: Props) {
+  const styles = useThemedStyles(createContextUsageDetailModalStyles);
+
   const { titleFontSize, bodyFontSize, captionFontSize } = useLayout();
   if (!visible || !usage) return null;
 
@@ -166,7 +172,8 @@ export function ContextUsageDetailModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createContextUsageDetailModalStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   modalRoot: {
     flex: 1,
     justifyContent: 'center',
@@ -313,3 +320,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+}

@@ -1,10 +1,52 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useApiConnectivityOptional } from '../context/ApiConnectivityContext';
-import { colors, typography } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
 import { zh } from '../locales/zh-CN';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+
+function createGlobalApiOfflineBannerStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    root: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      marginHorizontal: 12,
+      marginTop: 8,
+      marginBottom: 4,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      backgroundColor: colors.waiting,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    textCol: { flex: 1, gap: 6 },
+    title: { fontSize: typography.body, fontWeight: '600', color: colors.text },
+    hint: {
+      fontSize: typography.caption,
+      color: colors.textMuted,
+      lineHeight: typography.bodyLineHeight,
+    },
+    btn: {
+      minWidth: 88,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    btnDisabled: { opacity: 0.7 },
+    btnText: { color: colors.onPrimary, fontWeight: '600', fontSize: typography.caption },
+  });
+}
 
 /** 全局：服务器不可达时显示在 Tab 内容顶部 */
 export function GlobalApiOfflineBanner() {
+  const colors = useColors();
+  const styles = useThemedStyles(createGlobalApiOfflineBannerStyles);
   const ctx = useApiConnectivityOptional();
   if (!ctx) return null;
 
@@ -40,38 +82,3 @@ export function GlobalApiOfflineBanner() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    marginHorizontal: 12,
-    marginTop: 8,
-    marginBottom: 4,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: colors.waiting,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  textCol: { flex: 1, gap: 6 },
-  title: { fontSize: typography.body, fontWeight: '600', color: colors.text },
-  hint: {
-    fontSize: typography.caption,
-    color: colors.textMuted,
-    lineHeight: typography.bodyLineHeight,
-  },
-  btn: {
-    minWidth: 88,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnDisabled: { opacity: 0.7 },
-  btnText: { color: colors.onPrimary, fontWeight: '600', fontSize: typography.caption },
-});

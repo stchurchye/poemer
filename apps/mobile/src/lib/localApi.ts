@@ -216,6 +216,39 @@ export function createLocalApi(deps: {
       return ok(doc);
     },
 
+    saveDocumentContent: async (
+      documentId: string,
+      chapterId: string,
+      blockId: string,
+      content: string,
+    ) => {
+      const doc = store().saveDocumentContent(documentId, chapterId, blockId, content);
+      if (!doc) notFound('DOCUMENT_NOT_FOUND');
+      deps.markChanged();
+      return ok(doc);
+    },
+
+    updateChapterTitle: async (documentId: string, chapterId: string, title: string) => {
+      const doc = store().updateChapterTitle(documentId, chapterId, title);
+      if (!doc) notFound('DOCUMENT_NOT_FOUND');
+      deps.markChanged();
+      return ok(doc);
+    },
+
+    hideDocument: async (id: string) => {
+      const doc = store().hideDocument(id);
+      if (!doc) notFound('DOCUMENT_NOT_FOUND');
+      deps.markChanged();
+      return ok(doc);
+    },
+
+    restoreDocument: async (id: string) => {
+      const doc = store().restoreDocument(id);
+      if (!doc) notFound('DOCUMENT_NOT_FOUND');
+      deps.markChanged();
+      return ok(doc);
+    },
+
     addChapter: async (documentId: string, title?: string) => {
       const doc = store().addChapter(documentId, title);
       if (!doc) notFound('DOCUMENT_NOT_FOUND');

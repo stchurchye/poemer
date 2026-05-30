@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import {
   ActivityIndicator,
   Keyboard,
@@ -22,7 +26,6 @@ import { apiErrorText } from '../lib/apiError';
 import { getDeepSeekApiKey, maskApiKey, setDeepSeekApiKey } from '../lib/deepseekKey';
 import { getDashScopeApiKey, maskDashScopeApiKey, setDashScopeApiKey } from '../lib/dashscopeKey';
 import { getZenMuxApiKey, maskZenMuxApiKey, setZenMuxApiKey } from '../lib/zenmuxKey';
-import { colors, typography } from '../theme/colors';
 import { useLayout } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 
@@ -45,6 +48,8 @@ function KeyInputRow({
   inputStyle,
   onFocus,
 }: KeyInputRowProps) {
+  const styles = useThemedStyles(createApiKeysScreenStyles);
+  const colors = useColors();
   return (
     <AppTextInput
       style={[
@@ -67,6 +72,9 @@ function KeyInputRow({
 }
 
 export function ApiKeysScreen() {
+  const colors = useColors();
+  const styles = useThemedStyles(createApiKeysScreenStyles);
+
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { isTablet, bodyFontSize, width } = useLayout();
@@ -358,7 +366,8 @@ export function ApiKeysScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createApiKeysScreenStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   flex: { flex: 1, backgroundColor: colors.background },
   container: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, paddingBottom: 40 },
@@ -411,3 +420,4 @@ const styles = StyleSheet.create({
   keyBtnTextTablet: { fontSize: typography.button },
   keyBtnTextPrimary: { color: colors.onPrimary, fontSize: typography.caption, fontWeight: '600' },
 });
+}

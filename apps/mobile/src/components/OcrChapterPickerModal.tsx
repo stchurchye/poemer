@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { Keyboard, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import { AppModalShell } from './AppModalShell';
-import { colors } from '../theme/colors';
 import { radius, touch } from '../theme/tokens';
 import { useTextStyles } from '../theme/useTextStyles';
 import { zh } from '../locales/zh-CN';
@@ -23,6 +25,8 @@ export function OcrChapterPickerModal({
   onClose,
   onSelect,
 }: Props) {
+  const styles = useThemedStyles(createOcrChapterPickerModalStyles);
+
   const text = useTextStyles();
   const others = chapters.filter((ch) => ch.id !== activeChapterId);
 
@@ -61,7 +65,8 @@ export function OcrChapterPickerModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createOcrChapterPickerModalStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   card: { maxHeight: '85%' },
   hint: { marginBottom: 12 },
   list: { maxHeight: 400 },
@@ -81,3 +86,4 @@ const styles = StyleSheet.create({
   backRow: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
   backText: { color: colors.textMuted, fontWeight: '600' },
 });
+}

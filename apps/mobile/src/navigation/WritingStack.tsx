@@ -4,12 +4,14 @@ import { DocumentLibraryScreen } from '../screens/DocumentLibraryScreen';
 import { RevisionHistoryScreen } from '../screens/RevisionHistoryScreen';
 import { WritingScreen } from '../screens/WritingScreen';
 import type { WritingStackParamList } from './types';
-import { colors } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
 import { zh } from '../locales/zh-CN';
 
 const Stack = createNativeStackNavigator<WritingStackParamList>();
 
 export function WritingStack() {
+  const colors = useColors();
+
   return (
     <Stack.Navigator
       screenOptions={{

@@ -21,6 +21,7 @@ import {
 import { registerLocalApiRuntime } from '../lib/localApiRuntime';
 import { appAlert } from '../lib/appAlert';
 import { zh } from '../locales/zh-CN';
+import { useColors } from '../theme/ThemeContext';
 
 type LocalStoreContextValue = {
   store: LocalStore | null;
@@ -34,6 +35,22 @@ type LocalStoreContextValue = {
 
 const LocalStoreContext = createContext<LocalStoreContextValue | null>(null);
 const SAVE_DEBOUNCE_MS = 400;
+
+function LocalStoreLoadingView() {
+  const colors = useColors();
+  return (
+    <View
+      style={{
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: colors.background,
+      }}
+    >
+      <ActivityIndicator size="large" color={colors.primary} />
+    </View>
+  );
+}
 
 export function LocalStoreProvider({ children }: { children: ReactNode }) {
   const storeRef = useRef<LocalStore | null>(null);
@@ -116,11 +133,7 @@ export function LocalStoreProvider({ children }: { children: ReactNode }) {
   );
 
   if (!ready) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <LocalStoreLoadingView />;
   }
 
   return (

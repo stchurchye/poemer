@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import {
   ActivityIndicator,
   Linking,
@@ -17,7 +20,6 @@ import { useHoldToSpeak } from '../hooks/useHoldToSpeak';
 import { ensureSpeechPermissions } from '../lib/speech/localRecognition';
 import { pickChatImagesFromSource } from '../lib/pickChatImage';
 import { appAlert } from '../lib/appAlert';
-import { colors } from '../theme/colors';
 import { radius } from '../theme/tokens';
 import type { FontChannel } from '../theme/fontPresets';
 import { chipMinHeightForFontSize, lineHeightForFontSize } from '../theme/chromeText';
@@ -78,6 +80,8 @@ export function ChatComposeBar({
   sendLabel,
   fontChannel = 'dialog',
 }: Props) {
+  const styles = useThemedStyles(createChatComposeBarStyles);
+
   const icons = useMemo(() => composeBarIcons('human'), []);
   const { isTablet } = useLayout();
   const { captionFontSize, buttonFontSize, smallFontSize } = useTypography(fontChannel);
@@ -87,6 +91,8 @@ export function ChatComposeBar({
   const holdFontSize = isWritingDock ? smallFontSize : composeFontSize;
   const holdLineHeight = lineHeightForFontSize(holdFontSize);
   const fieldFontSize = Math.max(composeFontSize, holdFontSize);
+
+  const colors = useColors();
   const iconSize = isWritingDock ? (isTablet ? 46 : 44) : isTablet ? 42 : 40;
   const modeBtnWidth = isWritingDock ? (isTablet ? 64 : 60) : isTablet ? 56 : 52;
   const fieldHeight = Math.max(isTablet ? 60 : 56, chipMinHeightForFontSize(fieldFontSize));
@@ -318,7 +324,8 @@ export function ChatComposeBar({
   );
 }
 
-const styles = StyleSheet.create({
+function createChatComposeBarStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   barOuter: {
     borderWidth: 2,
     borderColor: 'transparent',
@@ -349,7 +356,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     maxHeight: 140,
-    backgroundColor: colors.background,
+    backgroundColor: colors.inputSurface,
     borderRadius: radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
@@ -413,3 +420,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+}

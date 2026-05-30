@@ -1,4 +1,8 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import {
   ActivityIndicator,
   Pressable,
@@ -25,7 +29,6 @@ import { rememberDocument } from '../lib/writingCache';
 import { LoadErrorView } from '../components/LoadErrorView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { TabletFrame } from '../components/TabletFrame';
-import { colors, typography } from '../theme/colors';
 import { lineHeightForFontSize } from '../theme/chromeText';
 import { radius } from '../theme/tokens';
 import { useLayout } from '../theme/layout';
@@ -36,6 +39,8 @@ import type { WritingStackParamList } from '../navigation/types';
 type Props = NativeStackScreenProps<WritingStackParamList, 'DocumentLibrary'>;
 
 export function DocumentLibraryScreen({ navigation, route }: Props) {
+  const styles = useThemedStyles(createDocumentLibraryScreenStyles);
+
   const currentDocumentId = route.params?.currentDocumentId;
   const text = useTextStyles();
   const { titleFontSize, buttonFontSize } = useLayout();
@@ -45,23 +50,35 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorHint, setErrorHint] = useState<string | undefined>();
+  const colors = useColors();
   useSuppressGlobalOfflineBanner(Boolean(error && documents.length === 0));
   const [creating, setCreating] = useState(false);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const hasListedOnceRef = useRef(false);
+  const documentsRef = useRef(documents);
+  documentsRef.current = documents;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setErrorHint(undefined);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? hasListedOnceRef.current;
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+      setErrorHint(undefined);
+    }
     try {
       const res = await api.listDocuments();
       setDocuments(filterVisibleDocuments(res.data));
+      hasListedOnceRef.current = true;
     } catch (e) {
       const err = apiLoadErrorText(e);
-      setError(err.message);
-      setErrorHint(err.hint);
+      if (!silent || documentsRef.current.length === 0) {
+        setError(err.message);
+        setErrorHint(err.hint);
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -71,7 +88,7 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load({ silent: hasListedOnceRef.current });
     }, [load]),
   );
 
@@ -116,7 +133,7 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
         const copy = await duplicateDocument(fresh.data);
         rememberDocument(copy);
         appAlert('好了', zh.writing.duplicateDocDone);
-        await load();
+        await load({ silent: true });
         openDocument(copy.id);
       } catch (e) {
         const { message, hint } = apiErrorText(e);
@@ -126,6 +143,39 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
       }
     },
     [duplicatingId, load, openDocument],
+  );
+
+  const confirmDelete = useCallback(
+    (doc: Document) => {
+      const isCurrent = doc.id === currentDocumentId;
+      appAlert(
+        zh.writing.deleteDocTitle,
+        isCurrent ? zh.writing.deleteDocCurrentMessage : zh.writing.deleteDocMessage,
+        [
+          { text: zh.writing.cancel, style: 'cancel' },
+          {
+            text: zh.writing.deleteDoc,
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                try {
+                  await api.hideDocument(doc.id);
+                  await load({ silent: true });
+                  if (isCurrent) navigation.goBack();
+                } catch (e) {
+                  const { message, hint } = apiErrorText(e);
+                  appAlert(
+                    zh.writing.deleteDocFailed,
+                    hint ? `${message}\n\n${hint}` : message,
+                  );
+                }
+              })();
+            },
+          },
+        ],
+      );
+    },
+    [currentDocumentId, load, navigation],
   );
 
   if (loading && documents.length === 0 && !error) {
@@ -218,6 +268,43 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
                       {zh.writing.docLibraryChapterCount(doc.chapters.length)}
                     </Text>
                   </Pressable>
+                  <View style={styles.cardActions}>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.cardActionBtn,
+                        pressed && styles.cardActionPressed,
+                      ]}
+                      onPress={() =>
+                        navigation.navigate('RevisionHistory', {
+                          documentId: doc.id,
+                          title: doc.title,
+                        })
+                      }
+                      disabled={Boolean(duplicatingId)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={zh.writing.history}
+                    >
+                      <Text style={[styles.cardActionText, { fontSize: buttonFontSize }]}>
+                        {zh.writing.history}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.cardActionBtn,
+                        pressed && styles.cardActionPressed,
+                      ]}
+                      onPress={() => confirmDelete(doc)}
+                      disabled={Boolean(duplicatingId)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={zh.writing.deleteDoc}
+                    >
+                      <Text style={[styles.deleteText, { fontSize: buttonFontSize }]}>
+                        {zh.writing.deleteDoc}
+                      </Text>
+                    </Pressable>
+                  </View>
                 </View>
               );
             })}
@@ -228,7 +315,8 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createDocumentLibraryScreenStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   frame: { flex: 1 },
   scroll: { flex: 1 },
   content: { padding: 16, paddingBottom: 32, gap: 12 },
@@ -290,4 +378,22 @@ const styles = StyleSheet.create({
     fontSize: typography.small - 2,
     lineHeight: Math.round((typography.small - 2) * 1.45),
   },
+  cardActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    paddingTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  cardActionBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  cardActionPressed: { opacity: 0.88 },
+  cardActionText: { color: colors.primary, fontWeight: '600' },
+  deleteText: { color: colors.error, fontWeight: '600' },
 });
+}

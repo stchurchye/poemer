@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { computeDiff, type Revision } from '@shiren/shared';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -20,7 +24,6 @@ import { AppTextInput } from '../components/AppTextInput';
 import { DiffView } from '../components/DiffView';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { TabletFrame } from '../components/TabletFrame';
-import { colors, typography } from '../theme/colors';
 import { REPLY_LINE_HEIGHT_RATIO } from '../theme/fontPresets';
 import { useLayout, useTypography } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
@@ -33,6 +36,7 @@ import {
   suggestionViewOnlyHint,
 } from '../lib/suggestionViewOnly';
 import { leaveDiffPreview, openDiffPreview } from '../lib/openDiffPreview';
+import { rememberDocument } from '../lib/writingCache';
 import { useMultiInputChromeCollapse } from '../hooks/useEditorChromeCollapse';
 
 type Props = NativeStackScreenProps<WritingStackParamList, 'DiffPreview'>;
@@ -70,6 +74,7 @@ function FocusSectionPanel({
   highlightActive?: boolean;
   children: ReactNode;
 }) {
+  const styles = useThemedStyles(createDiffPreviewScreenStyles);
   const active = focus === section;
   const emphasized = active && highlightActive;
   const flexAnim = useRef(
@@ -166,6 +171,8 @@ function FocusSectionPanel({
 }
 
 export function DiffPreviewScreen({ route, navigation }: Props) {
+  const styles = useThemedStyles(createDiffPreviewScreenStyles);
+
   const insets = useSafeAreaInsets();
   const { isTablet } = useLayout();
   const { bodyFontSize, bodyLineHeight, buttonFontSize } = useTypography('article');
@@ -182,6 +189,7 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
     viewOnly = false,
     viewOnlyReason,
   } = route.params;
+  const colors = useColors();
   /** 加载完成前不用棕色，避免已拒绝仍显示可编辑 */
   const [canEdit, setCanEdit] = useState(false);
   const [viewOnlyReasonResolved, setViewOnlyReasonResolved] = useState(viewOnlyReason);
@@ -339,7 +347,8 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
     });
     setAccepting(true);
     try {
-      await api.acceptRevision(documentId, revisionId, finalText);
+      const res = await api.acceptRevision(documentId, revisionId, finalText);
+      rememberDocument(res.data);
       navigation.navigate('WritingMain', {
         documentId,
         toast: '已经放进文章里了，您写得真好',
@@ -627,7 +636,8 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createDiffPreviewScreenStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   flex: { flex: 1 },
   page: {
     flex: 1,
@@ -841,3 +851,4 @@ const styles = StyleSheet.create({
   actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   actionSide: { flex: 1 },
 });
+}

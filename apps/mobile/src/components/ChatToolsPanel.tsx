@@ -1,8 +1,10 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { ChatSession } from '@shiren/shared';
 import { formatRevisionTime } from '@shiren/shared';
 import { PrimaryButton } from './PrimaryButton';
-import { colors } from '../theme/colors';
 import { radius } from '../theme/tokens';
 
 const compactPrimaryBtn = {
@@ -45,6 +47,8 @@ export function ChatToolsPanel({
   onSelectSession,
   sending,
 }: Props) {
+  const styles = useThemedStyles(createChatToolsPanelStyles);
+
   const text = useTextStyles('dialog');
   const { captionFontSize, bodyLineHeight } = useLayout();
   const pastSessions = sessions.filter((s) => s.id !== currentSessionId);
@@ -99,7 +103,8 @@ export function ChatToolsPanel({
   );
 }
 
-const styles = StyleSheet.create({
+function createChatToolsPanelStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   root: { flex: 1, minHeight: 0, gap: 12, paddingTop: 4 },
   hint: { color: colors.textMuted, flexShrink: 0 },
   sectionTitle: {
@@ -127,3 +132,4 @@ const styles = StyleSheet.create({
   sessionTitle: { fontWeight: '600', marginBottom: 4 },
   sessionMeta: { color: colors.textMuted },
 });
+}

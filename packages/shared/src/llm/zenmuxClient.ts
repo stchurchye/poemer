@@ -60,7 +60,7 @@ function buildWebSearchBody(webSearch?: ZenMuxWebSearchOptions): Record<string, 
   const region = webSearch.region?.trim();
   if (region) userLocation.region = region;
   return {
-    search_context_size: 'medium',
+    search_context_size: 'low',
     user_location: userLocation,
   };
 }
@@ -87,6 +87,17 @@ type UrlCitationAnnotation = {
   type?: string;
   url_citation?: { title?: string; url?: string };
 };
+
+function finalizeChatReply(
+  raw: string,
+  options?: ZenMuxChatOptions,
+  annotations?: UrlCitationAnnotation[],
+): string {
+  if (options?.appendCitations) {
+    return appendUrlCitations(raw, annotations);
+  }
+  return raw;
+}
 
 function appendCitationLines(content: string, cites: string[]): string {
   if (cites.length === 0) return content;
@@ -172,7 +183,10 @@ function parseAnthropicResponse(
   if (!answer) {
     throw new ZenMuxError('ZenMux 没有返回内容');
   }
-  return appendCitations ? appendCitationLines(answer, searchCites) : answer;
+  if (appendCitations) {
+    return appendCitationLines(answer, searchCites);
+  }
+  return answer;
 }
 
 async function callAnthropicMessagesWithWebSearch(
@@ -293,9 +307,7 @@ async function zenmuxChat(
   const message = json.choices?.[0]?.message;
   const raw = message?.content?.trim();
   if (!raw) throw new ZenMuxError('ZenMux 没有返回内容');
-  return options?.appendCitations
-    ? appendUrlCitations(raw, message?.annotations)
-    : raw;
+  return finalizeChatReply(raw, options, message?.annotations);
 }
 
 function imageDataUrl(imageBase64: string, mimeType?: string): string {
@@ -365,7 +377,7 @@ export async function zenmuxChatWithImages(params: {
   });
 }
 
-/** 多轮纯文本对话（问问题回答，Claude Sonnet 4.6） */
+/** 多轮纯文本对话（问问题回答，GPT-5.4） */
 export async function zenmuxCompleteMessages(params: {
   apiKey: string;
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;

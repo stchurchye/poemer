@@ -1,6 +1,7 @@
 import { Image, ScrollView, StyleSheet, View } from 'react-native';
-import { colors } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
 import { radius } from '../theme/tokens';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = {
   uris: string[];
@@ -8,8 +9,28 @@ type Props = {
 
 const THUMB = 112;
 
+function createChatUserMessageImagesStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    wrap: {
+      marginBottom: 8,
+      marginHorizontal: -2,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    thumb: {
+      width: THUMB,
+      height: THUMB,
+      borderRadius: radius.sm,
+      backgroundColor: colors.border,
+    },
+  });
+}
+
 /** 问问题用户气泡内展示本轮上传的图片（仅展示，不进后续 LLM 上下文） */
 export function ChatUserMessageImages({ uris }: Props) {
+  const styles = useThemedStyles(createChatUserMessageImagesStyles);
   if (uris.length === 0) return null;
 
   return (
@@ -32,20 +53,3 @@ export function ChatUserMessageImages({ uris }: Props) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    marginBottom: 8,
-    marginHorizontal: -2,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  thumb: {
-    width: THUMB,
-    height: THUMB,
-    borderRadius: radius.sm,
-    backgroundColor: colors.border,
-  },
-});

@@ -17,6 +17,9 @@ export const DEFAULT_FONT_SIZE_PRESET: FontSizePreset = 'large';
 /** 小助手回复、看一看改稿区等正文的行高倍率（与 replyLineHeight 一致） */
 export const REPLY_LINE_HEIGHT_RATIO = 1.22;
 
+/** 写作正文、历史版本列表等 article 通道多行正文行高倍率（原 1.875 过大，大字档显空） */
+export const ARTICLE_LINE_HEIGHT_RATIO = 1.35;
+
 export type FontMetrics = {
   titleFontSize: number;
   bodyFontSize: number;
@@ -68,7 +71,7 @@ function rowFromAnchorScale(preset: FontSizePreset): FontPresetRow {
 
 function metricsFromRow(row: FontPresetRow): FontMetrics {
   const bodyFontSize = row.body;
-  const bodyLineHeight = Math.round(bodyFontSize * 1.875);
+  const bodyLineHeight = Math.round(bodyFontSize * ARTICLE_LINE_HEIGHT_RATIO);
   return {
     titleFontSize: row.title,
     bodyFontSize,

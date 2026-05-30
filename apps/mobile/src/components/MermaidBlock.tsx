@@ -1,15 +1,18 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
-import { colors } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
 import { radius } from '../theme/tokens';
+import { useColors, useTheme } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = {
   code: string;
 };
 
-function buildMermaidHtml(diagram: string): string {
+function buildMermaidHtml(diagram: string, theme: 'neutral' | 'dark', errorColor: string): string {
   const payload = JSON.stringify(diagram.trim());
+  const errColor = JSON.stringify(errorColor);
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -19,7 +22,7 @@ function buildMermaidHtml(diagram: string): string {
   html, body { margin: 0; padding: 8px; background: transparent; overflow: hidden; }
   #wrap { display: flex; justify-content: center; align-items: flex-start; min-height: 40px; }
   svg { max-width: 100%; height: auto; }
-  .err { color: #c62828; font: 14px/1.5 sans-serif; white-space: pre-wrap; }
+  .err { color: ${errColor}; font: 14px/1.5 sans-serif; white-space: pre-wrap; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 </head>
@@ -34,7 +37,7 @@ function buildMermaidHtml(diagram: string): string {
       window.ReactNativeWebView.postMessage(String(h));
     }
     try {
-      mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'strict' });
+      mermaid.initialize({ startOnLoad: false, theme: '${theme}', securityLevel: 'strict' });
       const id = 'm' + Date.now();
       const { svg } = await mermaid.render(id, diagram);
       wrap.innerHTML = svg;
@@ -50,10 +53,40 @@ function buildMermaidHtml(diagram: string): string {
 </html>`;
 }
 
+function createMermaidBlockStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    wrap: {
+      marginVertical: 8,
+      borderRadius: radius.sm,
+      overflow: 'hidden',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    webview: {
+      flex: 1,
+      backgroundColor: 'transparent',
+    },
+    loader: {
+      position: 'absolute',
+      alignSelf: 'center',
+      top: '40%',
+      zIndex: 1,
+    },
+  });
+}
+
 export function MermaidBlock({ code }: Props) {
+  const colors = useColors();
+  const { appearance } = useTheme();
+  const styles = useThemedStyles(createMermaidBlockStyles);
   const [height, setHeight] = useState(160);
   const [loading, setLoading] = useState(true);
-  const html = useMemo(() => buildMermaidHtml(code), [code]);
+  const mermaidTheme = appearance === 'dark' ? 'dark' : 'neutral';
+  const html = useMemo(
+    () => buildMermaidHtml(code, mermaidTheme, colors.error),
+    [code, mermaidTheme, colors.error],
+  );
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     const next = Number.parseInt(event.nativeEvent.data, 10);
@@ -83,24 +116,3 @@ export function MermaidBlock({ code }: Props) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: {
-    marginVertical: 8,
-    borderRadius: radius.sm,
-    overflow: 'hidden',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  webview: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  loader: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '40%',
-    zIndex: 1,
-  },
-});

@@ -7,3 +7,7 @@ export function isDocumentHidden(doc: Pick<Document, 'hiddenAt'>): boolean {
 export function filterVisibleDocuments(docs: Document[]): Document[] {
   return docs.filter((d) => !isDocumentHidden(d));
 }
+
+export function filterHiddenDocuments(docs: Document[]): Document[] {
+  return docs.filter((d) => isDocumentHidden(d));
+}

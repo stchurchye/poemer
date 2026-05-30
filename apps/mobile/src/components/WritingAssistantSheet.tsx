@@ -1,4 +1,8 @@
 import type { ReactNode } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+import { useModalStyles } from '../theme/modalStyles';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -10,9 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme/colors';
 import { HeaderChipButton } from './HeaderChipButton';
-import { modalStyles } from '../theme/modalStyles';
 import { useTextStyles } from '../theme/useTextStyles';
 import { HeaderContextMeter } from './HeaderContextMeter';
 import { zh } from '../locales/zh-CN';
@@ -50,6 +52,9 @@ export function WritingAssistantSheet({
   headerReadAloud,
   headerContext,
 }: Props) {
+  const styles = useThemedStyles(createWritingAssistantSheetStyles);
+  const modalStyles = useModalStyles();
+
   const { width, height } = useWindowDimensions();
   const text = useTextStyles('dialog');
   const insets = useSafeAreaInsets();
@@ -135,7 +140,8 @@ export function WritingAssistantSheet({
   );
 }
 
-const styles = StyleSheet.create({
+function createWritingAssistantSheetStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   sheetWarm: {
     backgroundColor: colors.assistantBg,
     borderColor: colors.border,
@@ -180,3 +186,4 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
 });
+}

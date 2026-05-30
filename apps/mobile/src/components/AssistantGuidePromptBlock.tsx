@@ -1,8 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { AssistantGuideKey } from '@shiren/shared';
 import { runAssistantGuideAction, type AssistantGuideNav } from '../lib/assistantGuide';
 import { zh } from '../locales/zh-CN';
-import { colors } from '../theme/colors';
 import { typography } from '../theme/colors';
 
 type Props = {
@@ -20,6 +22,8 @@ export function AssistantGuidePromptBlock({
   disabled,
   captionFontSize = typography.caption,
 }: Props) {
+  const styles = useThemedStyles(createAssistantGuidePromptBlockStyles);
+
   const primaryLabel = (zh.guide[guideKey] as { primaryButton: string }).primaryButton;
 
   return (
@@ -44,7 +48,8 @@ export function AssistantGuidePromptBlock({
   );
 }
 
-const styles = StyleSheet.create({
+function createAssistantGuidePromptBlockStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   block: { marginTop: 12 },
   row: { flexDirection: 'row', gap: 8 },
   primaryBtn: {
@@ -66,3 +71,4 @@ const styles = StyleSheet.create({
   },
   secondaryText: { color: colors.text, fontWeight: '600' },
 });
+}

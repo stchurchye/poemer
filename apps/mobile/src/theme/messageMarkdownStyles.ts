@@ -1,5 +1,5 @@
 import { Platform, StyleSheet, type TextStyle } from 'react-native';
-import { colors } from './colors';
+import type { ColorPalette } from './colors';
 
 const mono = Platform.select({
   ios: 'Menlo',
@@ -8,12 +8,19 @@ const mono = Platform.select({
 });
 
 export function buildMessageMarkdownStyles(params: {
+  colors: ColorPalette;
   bodyFontSize: number;
   bodyLineHeight: number;
   captionFontSize: number;
   paragraphMarginBottom?: number;
 }): Record<string, TextStyle | object> {
-  const { bodyFontSize, bodyLineHeight, captionFontSize, paragraphMarginBottom = 10 } = params;
+  const {
+    colors,
+    bodyFontSize,
+    bodyLineHeight,
+    captionFontSize,
+    paragraphMarginBottom = 10,
+  } = params;
   const codeSize = Math.max(Math.round(bodyFontSize * 0.82), 18);
   const codeLine = Math.round(codeSize * 1.45);
   const headingScale = (ratio: number) => Math.round(bodyFontSize * ratio);
@@ -131,8 +138,8 @@ export function buildMessageMarkdownStyles(params: {
       fontFamily: mono,
       fontSize: codeSize,
       lineHeight: codeLine,
-      backgroundColor: '#2d2a28',
-      color: '#f5f0ea',
+      backgroundColor: colors.markdownCodeBg,
+      color: colors.markdownCodeText,
       padding: 12,
       borderRadius: 10,
       marginVertical: 8,
@@ -142,8 +149,8 @@ export function buildMessageMarkdownStyles(params: {
       fontFamily: mono,
       fontSize: codeSize,
       lineHeight: codeLine,
-      backgroundColor: '#2d2a28',
-      color: '#f5f0ea',
+      backgroundColor: colors.markdownCodeBg,
+      color: colors.markdownCodeText,
       padding: 12,
       borderRadius: 10,
       marginVertical: 8,

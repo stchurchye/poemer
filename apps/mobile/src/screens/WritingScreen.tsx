@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { useEditorChromeCollapse } from '../hooks/useEditorChromeCollapse';
+import { useTripleTapKeyboardUnlock } from '../hooks/useTripleTapKeyboardUnlock';
 import {
   ActivityIndicator,
   Keyboard,
@@ -9,10 +14,11 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { appAlert } from '../lib/appAlert';
-import { filterVisibleDocuments } from '../lib/documentVisibility';
+import { filterVisibleDocuments, isDocumentHidden } from '../lib/documentVisibility';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -35,6 +41,7 @@ import { resolveRevisionForView } from '../lib/resolveRevisionForView';
 import { resolveSuggestionViewPolicy } from '../lib/suggestionViewOnly';
 import type { AssistantGuideNav } from '../lib/assistantGuide';
 import type { RootTabParamList } from '../navigation/types';
+import { buildRootTabBarStyle } from '../navigation/tabBarStyle';
 import { pickReadPortion, type ReadPortionMode, type TextSelection } from '../lib/readAloud';
 import { cancelAssistantFeedback } from '../lib/assistantFeedback';
 import { isSpeaking, speakText, stopReadAloud, stopSpeaking } from '../lib/tts';
@@ -47,7 +54,7 @@ import {
   rememberDocument,
   rememberTabs,
 } from '../lib/writingCache';
-import { ChapterShareCard } from '../components/ChapterShareCard';
+import { ChapterShareCard, lightColors as shareLightPalette } from '../components/ChapterShareCard';
 import { WritingAssistantPanel } from '../components/WritingAssistantPanel';
 import { OcrChapterPickerModal } from '../components/OcrChapterPickerModal';
 import { OcrConfirmModal } from '../components/OcrConfirmModal';
@@ -83,7 +90,6 @@ import {
 } from '../lib/chapterShare';
 import { TabletFrame } from '../components/TabletFrame';
 import { CHROME_CHIP_PAD_V, chipMinHeightForFontSize, lineHeightForFontSize } from '../theme/chromeText';
-import { colors, typography } from '../theme/colors';
 import { radius } from '../theme/tokens';
 import { useLayout, useTypography } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
@@ -91,10 +97,14 @@ import type { WritingStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<WritingStackParamList, 'WritingMain'>;
 
-/** 略长于默认，避免快速切换时误触长按 */
-const RENAME_LONG_PRESS_MS = 520;
+/** 需长按约 6 秒，避免切换章节时误触改名 */
+const RENAME_LONG_PRESS_MS = 6000;
+
+type WritingScreenStyles = ReturnType<typeof createWritingScreenStyles>;
 
 function WritingToolbarChip({
+  styles,
+  colors,
   label,
   onPress,
   active,
@@ -105,6 +115,8 @@ function WritingToolbarChip({
   lineHeight,
   chipMinHeight,
 }: {
+  styles: WritingScreenStyles;
+  colors: ColorPalette;
   label: string;
   onPress: () => void;
   active?: boolean;
@@ -151,26 +163,39 @@ function WritingToolbarChip({
 }
 
 export function WritingScreen({ navigation, route }: Props) {
+  const styles = useThemedStyles(createWritingScreenStyles);
+
   const insets = useSafeAreaInsets();
-  const { isTablet, smallFontSize } = useLayout();
+  const { isTablet, smallFontSize, tabBarHeight } = useLayout();
   const { bodyFontSize, bodyLineHeight } = useTypography('article');
   const chromeFontSize = smallFontSize;
   const chromeLineHeight = lineHeightForFontSize(chromeFontSize);
   const chromeChipMinHeight = chipMinHeightForFontSize(chromeFontSize);
   const { collapsed: editorChromeCollapsed, onInputFocus, onInputBlur, expandChrome } =
     useEditorChromeCollapse();
+  const bodyInputRef = useRef<TextInput>(null);
+  const bodySaveChainRef = useRef(Promise.resolve());
+  const {
+    keyboardUnlocked,
+    onBodyPressIn,
+    onBodyBlur: resetKeyboardGate,
+  } = useTripleTapKeyboardUnlock(bodyInputRef);
   const [initLoading, setInitLoading] = useState(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [initErrorHint, setInitErrorHint] = useState<string | undefined>();
   const [creating, setCreating] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(route.params?.documentId ?? null);
+  const activeIdRef = useRef(activeId);
+  const skipFirstFocusReconcileRef = useRef(true);
   const [doc, setDoc] = useState<Document | null>(null);
   const [docLoading, setDocLoading] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
   const [docErrorHint, setDocErrorHint] = useState<string | undefined>();
+  const colors = useColors();
   useSuppressGlobalOfflineBanner(Boolean(initError || docError));
   const [toast, setToast] = useState(route.params?.toast);
   const [bodyDraft, setBodyDraft] = useState('');
+  const [bodyInputFocused, setBodyInputFocused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [readHint, setReadHint] = useState<string | null>(null);
@@ -225,6 +250,38 @@ export function WritingScreen({ navigation, route }: Props) {
     setAssistantHeaderRead(null);
   }, []);
 
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
+
+  const pickActiveIdFromVisible = useCallback(
+    (visible: Document[], current: string | null): string | null => {
+      if (current && visible.some((d) => d.id === current)) return current;
+      const fromRoute = route.params?.documentId;
+      if (fromRoute && visible.some((d) => d.id === fromRoute)) return fromRoute;
+      return visible[0]?.id ?? null;
+    },
+    [route.params?.documentId],
+  );
+
+  const ensureDefaultDocument = useCallback(async () => {
+    const created = await api.createDocument('我的文章');
+    rememberDocument(created.data);
+    setActiveId(created.data.id);
+  }, []);
+
+  const applyVisibleDocuments = useCallback(
+    (visible: Document[]) => {
+      rememberTabs(visible.map((d) => ({ id: d.id, title: d.title })));
+      const next = pickActiveIdFromVisible(visible, activeIdRef.current);
+      if (next !== activeIdRef.current) {
+        setDoc(null);
+      }
+      setActiveId(next);
+    },
+    [pickActiveIdFromVisible],
+  );
+
   const loadDocumentsInit = useCallback(async () => {
     setInitLoading(true);
     setInitError(null);
@@ -232,18 +289,10 @@ export function WritingScreen({ navigation, route }: Props) {
     try {
       const res = await api.listDocuments();
       const visible = filterVisibleDocuments(res.data);
-      rememberTabs(visible.map((d) => ({ id: d.id, title: d.title })));
       if (visible.length === 0) {
-        const created = await api.createDocument('我的文章');
-        rememberDocument(created.data);
-        setActiveId(created.data.id);
+        await ensureDefaultDocument();
       } else {
-        setActiveId((current) => {
-          if (current && visible.some((d) => d.id === current)) return current;
-          const fromRoute = route.params?.documentId;
-          if (fromRoute && visible.some((d) => d.id === fromRoute)) return fromRoute;
-          return visible[0]?.id ?? null;
-        });
+        applyVisibleDocuments(visible);
       }
     } catch (e) {
       const cached = getCachedTabs();
@@ -256,35 +305,77 @@ export function WritingScreen({ navigation, route }: Props) {
     } finally {
       setInitLoading(false);
     }
-  }, [route.params?.documentId]);
+  }, [applyVisibleDocuments, ensureDefaultDocument]);
+
+  const reconcileDocumentsOnFocus = useCallback(async () => {
+    const currentId = activeIdRef.current;
+    if (currentId) {
+      try {
+        const res = await api.getDocument(currentId);
+        if (!isDocumentHidden(res.data)) {
+          rememberDocument(res.data);
+          setDoc(res.data);
+          return;
+        }
+      } catch {
+        // fall through to full reconcile
+      }
+    }
+
+    setDoc(null);
+    try {
+      const res = await api.listDocuments();
+      const visible = filterVisibleDocuments(res.data);
+      if (visible.length === 0) {
+        await ensureDefaultDocument();
+        return;
+      }
+      applyVisibleDocuments(visible);
+    } catch {
+      const cached = getCachedTabs();
+      const visibleIds = new Set(cached.map((t) => t.id));
+      if (currentId && !visibleIds.has(currentId)) {
+        setActiveId(cached[0]?.id ?? null);
+        setDoc(null);
+      }
+    }
+  }, [applyVisibleDocuments, ensureDefaultDocument]);
 
   useReconnectEffect(() => {
     void loadDocumentsInit();
   }, [loadDocumentsInit]);
 
-  const loadDoc = useCallback(async (id: string) => {
-    setDocLoading(true);
-    setDocError(null);
-    setDocErrorHint(undefined);
-    try {
-      const res = await api.getDocument(id);
-      rememberDocument(res.data);
-      setDoc(res.data);
+  const loadDoc = useCallback(
+    async (id: string) => {
+      setDocLoading(true);
       setDocError(null);
-    } catch (e) {
-      const cached = getCachedDocument(id);
-      if (cached) {
-        setDoc(cached);
-      } else {
-        setDoc((prev) => (prev?.id === id ? prev : null));
+      setDocErrorHint(undefined);
+      try {
+        const res = await api.getDocument(id);
+        if (isDocumentHidden(res.data)) {
+          setDoc(null);
+          void reconcileDocumentsOnFocus();
+          return;
+        }
+        rememberDocument(res.data);
+        setDoc(res.data);
+        setDocError(null);
+      } catch (e) {
+        const cached = getCachedDocument(id);
+        if (cached && !isDocumentHidden(cached)) {
+          setDoc(cached);
+        } else {
+          setDoc((prev) => (prev?.id === id ? null : prev));
+        }
+        const err = apiLoadErrorText(e);
+        setDocError(err.message);
+        setDocErrorHint(err.hint);
+      } finally {
+        setDocLoading(false);
       }
-      const err = apiLoadErrorText(e);
-      setDocError(err.message);
-      setDocErrorHint(err.hint);
-    } finally {
-      setDocLoading(false);
-    }
-  }, []);
+    },
+    [reconcileDocumentsOnFocus],
+  );
 
   useReconnectEffect(() => {
     if (activeId) void loadDoc(activeId);
@@ -335,7 +426,12 @@ export function WritingScreen({ navigation, route }: Props) {
   useEffect(() => {
     setBodyDraft(activeBlock?.content ?? '');
     setSelection({ start: 0, end: 0 });
-  }, [activeChapter?.id, activeBlock?.id, activeBlock?.content]);
+  }, [activeChapter?.id, activeBlock?.id]);
+
+  useEffect(() => {
+    if (bodyInputFocused) return;
+    setBodyDraft(activeBlock?.content ?? '');
+  }, [activeBlock?.content, bodyInputFocused]);
 
   const refreshSuggestionRevision = useCallback(async () => {
     if (!doc || !activeBlock) {
@@ -368,13 +464,18 @@ export function WritingScreen({ navigation, route }: Props) {
   /** 回到写作页时刷新待查看建议；失败重试由 ReconnectBanner / LoadErrorView 手动触发，避免 docError 触发依赖死循环 */
   useFocusEffect(
     useCallback(() => {
+      if (skipFirstFocusReconcileRef.current) {
+        skipFirstFocusReconcileRef.current = false;
+      } else {
+        void reconcileDocumentsOnFocus();
+      }
       void refreshSuggestionRevision();
       return () => {
         void stopReadAloud();
         setSpeaking(false);
         setReadHint(null);
       };
-    }, [refreshSuggestionRevision]),
+    }, [reconcileDocumentsOnFocus, refreshSuggestionRevision]),
   );
 
   useEffect(() => {
@@ -442,7 +543,13 @@ export function WritingScreen({ navigation, route }: Props) {
 
   const switchChapter = async (chapterId: string) => {
     if (chapterId === activeChapterId) return;
-    await saveBody();
+    if (doc && activeChapter && activeBlock) {
+      await persistBody(bodyDraft, {
+        documentId: doc.id,
+        chapterId: activeChapter.id,
+        blockId: activeBlock.id,
+      });
+    }
     setActiveChapterId(chapterId);
     void stopSpeaking();
     setSpeaking(false);
@@ -470,12 +577,11 @@ export function WritingScreen({ navigation, route }: Props) {
           '',
         );
         if (suffix !== null && suffix.trim()) {
-          const chapters = docData.chapters.map((c) =>
-            c.id === newest.id
-              ? { ...c, title: buildChapterTitle(prefix, suffix) }
-              : c,
+          const renamed = await api.updateChapterTitle(
+            doc.id,
+            newest.id,
+            buildChapterTitle(prefix, suffix),
           );
-          const renamed = await api.updateDocument(doc.id, { chapters });
           docData = renamed.data;
         }
         setActiveChapterId(newest.id);
@@ -572,25 +678,37 @@ export function WritingScreen({ navigation, route }: Props) {
     })();
   };
 
-  const persistBody = async (content: string) => {
-    if (!doc || !activeChapter || !activeBlock || saving) return;
-    if (content === activeBlock.content) return;
+  const persistBody = async (
+    content: string,
+    target?: { documentId: string; chapterId: string; blockId: string },
+  ) => {
+    const documentId = target?.documentId ?? doc?.id;
+    const chapterId = target?.chapterId ?? activeChapter?.id;
+    const blockId = target?.blockId ?? activeBlock?.id;
+    if (!documentId || !chapterId || !blockId) return;
+
+    const saveTask = bodySaveChainRef.current
+      .then(async () => {
+        const fresh = await api.getDocument(documentId);
+        const chapter = fresh.data.chapters.find((c) => c.id === chapterId);
+        const block = chapter?.blocks.find((b) => b.id === blockId);
+        if (!chapter || !block) return;
+        if (content === block.content) return;
+
+        const res = await api.saveDocumentContent(documentId, chapterId, blockId, content);
+        rememberDocument(res.data);
+        if (activeIdRef.current === documentId) {
+          setDoc(res.data);
+        }
+      })
+      .catch((e) => {
+        appAlert('保存没成功', formatApiErrorAlertBody(e));
+      });
+
+    bodySaveChainRef.current = saveTask;
     setSaving(true);
     try {
-      const chapters = doc.chapters.map((ch) =>
-        ch.id !== activeChapter.id
-          ? ch
-          : {
-              ...ch,
-              blocks: ch.blocks.map((b) =>
-                b.id === activeBlock.id ? { ...b, content } : b,
-              ),
-            },
-      );
-      const res = await api.updateDocument(doc.id, { chapters });
-      setDoc(res.data);
-    } catch (e) {
-      appAlert('保存没成功', formatApiErrorAlertBody(e));
+      await saveTask;
     } finally {
       setSaving(false);
     }
@@ -636,10 +754,7 @@ export function WritingScreen({ navigation, route }: Props) {
       : nextSuffix.trim() || ch.title;
     if (newTitle === ch.title) return;
     try {
-      const chapters = doc.chapters.map((c) =>
-        c.id === chapterId ? { ...c, title: newTitle } : c,
-      );
-      const res = await api.updateDocument(doc.id, { chapters });
+      const res = await api.updateChapterTitle(doc.id, chapterId, newTitle);
       rememberDocument(res.data);
       setDoc(res.data);
     } catch (e) {
@@ -671,23 +786,17 @@ export function WritingScreen({ navigation, route }: Props) {
     blockId: string,
     nextContent: string,
   ): Promise<Document | null> => {
-    const fresh = await api.getDocument(documentId);
-    const sourceDoc = fresh.data;
-    const chapter = sourceDoc.chapters.find((c) => c.id === chapterId);
-    const block = chapter?.blocks.find((b) => b.id === blockId);
-    if (!chapter || !block) return null;
-    const chapters = sourceDoc.chapters.map((ch) =>
-      ch.id !== chapterId
-        ? ch
-        : {
-            ...ch,
-            blocks: ch.blocks.map((b) =>
-              b.id === blockId ? { ...b, content: nextContent } : b,
-            ),
-          },
-    );
-    const res = await api.updateDocument(documentId, { chapters });
-    return res.data;
+    try {
+      const res = await api.saveDocumentContent(
+        documentId,
+        chapterId,
+        blockId,
+        nextContent,
+      );
+      return res.data;
+    } catch {
+      return null;
+    }
   };
 
   const beginOcrPlacement = (
@@ -843,10 +952,11 @@ export function WritingScreen({ navigation, route }: Props) {
         '',
       );
       if (suffix !== null && suffix.trim()) {
-        const chapters = docData.chapters.map((c) =>
-          c.id === newest.id ? { ...c, title: buildChapterTitle(prefix, suffix) } : c,
+        const renamed = await api.updateChapterTitle(
+          doc.id,
+          newest.id,
+          buildChapterTitle(prefix, suffix),
         );
-        const renamed = await api.updateDocument(doc.id, { chapters });
         docData = renamed.data;
       }
       rememberDocument(docData);
@@ -965,6 +1075,7 @@ export function WritingScreen({ navigation, route }: Props) {
 
   const assistantFabBottom = Math.max(insets.bottom, 12) + 8;
   const bodyInputScrollPadding = assistantFabBottom + 76;
+  const keyboardGateActive = !ocrPlacementActive;
 
   const openDocumentLibrary = useCallback(() => {
     navigation.navigate('DocumentLibrary', { currentDocumentId: doc?.id });
@@ -981,6 +1092,40 @@ export function WritingScreen({ navigation, route }: Props) {
     }
     return navigation.getParent<BottomTabNavigationProp<RootTabParamList>>();
   }, [navigation]);
+
+  const ocrModalVisible =
+    ocrLoadingVisible ||
+    ocrConfirmVisible ||
+    ocrInsertWhereVisible ||
+    ocrInsertHowVisible ||
+    ocrChapterPickerVisible;
+
+  const tabBarStyle = useMemo(
+    () =>
+      buildRootTabBarStyle({
+        colors,
+        bottomInset: insets.bottom,
+        isTablet,
+        tabBarHeight,
+        hidden: ocrModalVisible,
+      }),
+    [colors, insets.bottom, isTablet, ocrModalVisible, tabBarHeight],
+  );
+
+  useEffect(() => {
+    if (!tabNav) return;
+    tabNav.setOptions({ tabBarStyle });
+    return () => {
+      tabNav.setOptions({
+        tabBarStyle: buildRootTabBarStyle({
+          colors,
+          bottomInset: insets.bottom,
+          isTablet,
+          tabBarHeight,
+        }),
+      });
+    };
+  }, [tabNav, tabBarStyle, insets.bottom, isTablet, tabBarHeight]);
 
   const assistantGuideNav = useMemo((): AssistantGuideNav | undefined => {
     if (!doc || !tabNav) return undefined;
@@ -1063,6 +1208,8 @@ export function WritingScreen({ navigation, route }: Props) {
                   nestedScrollEnabled
                 >
                   <WritingToolbarChip
+                    styles={styles}
+                    colors={colors}
                     label={zh.writing.shareCopyText}
                     onPress={() => void handleCopyChapter()}
                     disabled={sharing}
@@ -1071,6 +1218,8 @@ export function WritingScreen({ navigation, route }: Props) {
                     chipMinHeight={chromeChipMinHeight}
                   />
                   <WritingToolbarChip
+                    styles={styles}
+                    colors={colors}
                     label={zh.writing.shareGenerateImage}
                     onPress={() => void handleGenerateChapterImage()}
                     disabled={sharing}
@@ -1080,6 +1229,8 @@ export function WritingScreen({ navigation, route }: Props) {
                     chipMinHeight={chromeChipMinHeight}
                   />
                   <WritingToolbarChip
+                    styles={styles}
+                    colors={colors}
                     label={zh.writing.newArticle}
                     onPress={openDocumentLibrary}
                     disabled={creating}
@@ -1088,6 +1239,8 @@ export function WritingScreen({ navigation, route }: Props) {
                     chipMinHeight={chromeChipMinHeight}
                   />
                   <WritingToolbarChip
+                    styles={styles}
+                    colors={colors}
                     label={speaking ? zh.writing.stopReading : zh.writing.readMode}
                     onPress={() => void toggleReadAloud()}
                     active={speaking}
@@ -1111,20 +1264,10 @@ export function WritingScreen({ navigation, route }: Props) {
                   </View>
                   <View style={styles.chapterTitleActions}>
                     <WritingToolbarChip
+                      styles={styles}
+                      colors={colors}
                       label={zh.writing.renameArticleTitle}
                       onPress={() => void renameArticleTitle()}
-                      fontSize={chromeFontSize}
-                      lineHeight={chromeLineHeight}
-                      chipMinHeight={chromeChipMinHeight}
-                    />
-                    <WritingToolbarChip
-                      label={zh.writing.history}
-                      onPress={() =>
-                        navigation.navigate('RevisionHistory', {
-                          documentId: doc.id,
-                          title: doc.title,
-                        })
-                      }
                       fontSize={chromeFontSize}
                       lineHeight={chromeLineHeight}
                       chipMinHeight={chromeChipMinHeight}
@@ -1192,6 +1335,7 @@ export function WritingScreen({ navigation, route }: Props) {
 
             <View style={styles.bodyInputWrap}>
               <AppTextInput
+                ref={bodyInputRef}
                 style={[
                   styles.bodyInput,
                   isTablet && styles.bodyInputTablet,
@@ -1212,8 +1356,15 @@ export function WritingScreen({ navigation, route }: Props) {
                 onSelectionChange={(e) => {
                   setSelection(e.nativeEvent.selection);
                 }}
-                onFocus={onInputFocus}
+                showSoftInputOnFocus={keyboardGateActive && keyboardUnlocked}
+                onPressIn={keyboardGateActive ? onBodyPressIn : undefined}
+                onFocus={() => {
+                  setBodyInputFocused(true);
+                  onInputFocus();
+                }}
                 onBlur={() => {
+                  setBodyInputFocused(false);
+                  if (!resetKeyboardGate()) return;
                   onInputBlur();
                   void saveBody();
                 }}
@@ -1432,6 +1583,7 @@ export function WritingScreen({ navigation, route }: Props) {
         <View style={styles.shareCaptureHost} pointerEvents="none">
           <View ref={shareCardRef} collapsable={false}>
             <ChapterShareCard
+              palette={shareLightPalette}
               documentTitle={sharePayload.documentTitle}
               chapterTitle={sharePayload.chapterTitle}
               body={sharePayload.body}
@@ -1443,7 +1595,8 @@ export function WritingScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createWritingScreenStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   frame: { flex: 1 },
   mainColumn: { flex: 1, minHeight: 0 },
@@ -1653,7 +1806,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     padding: 16,
     color: colors.text,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.inputSurface,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.border,
@@ -1670,3 +1823,4 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   empty: { fontSize: typography.body, color: colors.textMuted },
 });
+}

@@ -1,4 +1,8 @@
 import { useCallback, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -7,7 +11,6 @@ import {
   getAppVersionInfo,
 } from '../lib/appVersionInfo';
 import { runManualOtaUpdate, type OtaManualPhase } from '../lib/otaUpdate';
-import { colors, typography } from '../theme/colors';
 import { zh } from '../locales/zh-CN';
 
 function phaseButtonLabel(phase: OtaManualPhase): string {
@@ -17,11 +20,14 @@ function phaseButtonLabel(phase: OtaManualPhase): string {
 }
 
 export function AppVersionFooter() {
+  const styles = useThemedStyles(createAppVersionFooterStyles);
+
   const [label, setLabel] = useState(() => getAppVersionFooterLabel(getAppVersionInfo()));
   const [canUpdate, setCanUpdate] = useState(() => canManualOtaUpdate(getAppVersionInfo()));
   const [phase, setPhase] = useState<OtaManualPhase>('idle');
   const busy = phase !== 'idle';
 
+  const colors = useColors();
   useFocusEffect(
     useCallback(() => {
       const info = getAppVersionInfo();
@@ -58,7 +64,8 @@ export function AppVersionFooter() {
   );
 }
 
-const styles = StyleSheet.create({
+function createAppVersionFooterStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   wrap: {
     marginTop: 8,
     paddingTop: 20,
@@ -99,3 +106,4 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 });
+}

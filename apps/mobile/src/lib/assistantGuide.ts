@@ -56,7 +56,10 @@ export function runAssistantGuideAction(key: AssistantGuideKey, nav: AssistantGu
           title: nav.documentTitle?.trim() || zh.writing.docLibraryTitle,
         });
       } else {
-        nav.tabNav.navigate('WritingTab', { screen: 'WritingMain' });
+        nav.tabNav.navigate('WritingTab', {
+          screen: 'DocumentLibrary',
+          params: { currentDocumentId: nav.documentId },
+        });
       }
       return;
     case 'chat_switch_topic':

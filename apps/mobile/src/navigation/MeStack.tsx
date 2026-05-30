@@ -2,12 +2,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ApiKeysScreen } from '../screens/ApiKeysScreen';
 import { MeScreen } from '../screens/MeScreen';
 import type { MeStackParamList } from './types';
-import { colors } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
 import { zh } from '../locales/zh-CN';
 
 const Stack = createNativeStackNavigator<MeStackParamList>();
 
 export function MeStack() {
+  const colors = useColors();
+
   return (
     <Stack.Navigator
       screenOptions={{

@@ -7,7 +7,9 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native';
-import { colors } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { formatElapsedSeconds } from '../lib/formatElapsedSeconds';
 
@@ -19,6 +21,19 @@ type Props = {
   spinnerSize?: 'small' | 'large';
 };
 
+function createAssistantLoadingRowStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+    },
+    text: { flex: 1, color: colors.textMuted, fontWeight: '600' },
+  });
+}
+
 export function AssistantLoadingRow({
   label,
   active,
@@ -26,6 +41,8 @@ export function AssistantLoadingRow({
   textStyle,
   spinnerSize = 'small',
 }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createAssistantLoadingRowStyles);
   const elapsed = useElapsedSeconds(active);
   const suffix = active ? ` · ${formatElapsedSeconds(elapsed)}` : '';
 
@@ -59,14 +76,3 @@ export function LoadingLabel({
     </Text>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  text: { flex: 1, color: colors.textMuted, fontWeight: '600' },
-});

@@ -24,7 +24,7 @@ export function createZenMuxModelClient(options?: {
         throw new LocalModelError(
           '请先在设置里填写 ZenMux 密钥',
           'MODEL_KEY_MISSING',
-          '问问题文字与带图回答需要 ZenMux（Claude Sonnet 4.6）。',
+          '问问题文字与带图回答需要 ZenMux（GPT-5.4）。',
         );
       }
       try {
@@ -32,7 +32,7 @@ export function createZenMuxModelClient(options?: {
           apiKey: key,
           messages: input.messages,
           maxTokens: input.maxTokens,
-          temperature: input.temperature,
+          temperature: input.temperature ?? (webSearch ? 0.2 : undefined),
           model: defaultModel,
           webSearch,
         });

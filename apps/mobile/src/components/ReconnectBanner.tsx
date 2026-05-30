@@ -1,6 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, typography } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
 import { zh } from '../locales/zh-CN';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 interface Props {
   message: string;
@@ -8,7 +10,41 @@ interface Props {
   onRetry: () => void;
 }
 
+function createReconnectBannerStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    root: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginHorizontal: 12,
+      marginBottom: 8,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      backgroundColor: colors.waiting,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    textCol: { flex: 1, gap: 4 },
+    text: { fontSize: typography.caption, fontWeight: '600', color: colors.text },
+    hint: {
+      fontSize: typography.caption,
+      color: colors.textMuted,
+      lineHeight: typography.bodyLineHeight,
+    },
+    btn: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 8,
+      backgroundColor: colors.primary,
+    },
+    btnText: { color: colors.onPrimary, fontWeight: '600', fontSize: typography.caption },
+  });
+}
+
 export function ReconnectBanner({ message, hint, onRetry }: Props) {
+  const styles = useThemedStyles(createReconnectBannerStyles);
+
   return (
     <View style={styles.root}>
       <View style={styles.textCol}>
@@ -25,33 +61,3 @@ export function ReconnectBanner({ message, hint, onRetry }: Props) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginHorizontal: 12,
-    marginBottom: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: colors.waiting,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  textCol: { flex: 1, gap: 4 },
-  text: { fontSize: typography.caption, fontWeight: '600', color: colors.text },
-  hint: {
-    fontSize: typography.caption,
-    color: colors.textMuted,
-    lineHeight: typography.bodyLineHeight,
-  },
-  btn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-  },
-  btnText: { color: colors.onPrimary, fontWeight: '600', fontSize: typography.caption },
-});

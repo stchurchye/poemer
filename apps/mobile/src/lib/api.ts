@@ -19,6 +19,20 @@ export const api = {
   updateDocument: (id: string, patch: Partial<Document>) =>
     local().updateDocument(id, patch),
 
+  saveDocumentContent: (
+    documentId: string,
+    chapterId: string,
+    blockId: string,
+    content: string,
+  ) => local().saveDocumentContent(documentId, chapterId, blockId, content),
+
+  updateChapterTitle: (documentId: string, chapterId: string, title: string) =>
+    local().updateChapterTitle(documentId, chapterId, title),
+
+  hideDocument: (id: string) => local().hideDocument(id),
+
+  restoreDocument: (id: string) => local().restoreDocument(id),
+
   addChapter: (documentId: string, title?: string) =>
     local().addChapter(documentId, title),
 

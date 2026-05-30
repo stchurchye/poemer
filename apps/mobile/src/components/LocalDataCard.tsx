@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import {
@@ -8,7 +12,6 @@ import {
 } from '../lib/localDataFiles';
 import { useLocalStore } from '../context/LocalStoreContext';
 import { appAlert } from '../lib/appAlert';
-import { colors, typography } from '../theme/colors';
 import { zh } from '../locales/zh-CN';
 
 function formatBytes(bytes: number): string {
@@ -18,6 +21,8 @@ function formatBytes(bytes: number): string {
 }
 
 export function LocalDataCard() {
+  const styles = useThemedStyles(createLocalDataCardStyles);
+
   const { snapshot, replaceStore } = useLocalStore();
   const [bytes, setBytes] = useState(0);
 
@@ -86,7 +91,8 @@ export function LocalDataCard() {
   );
 }
 
-const styles = StyleSheet.create({
+function createLocalDataCardStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
     padding: 20,
@@ -122,3 +128,4 @@ const styles = StyleSheet.create({
   },
   buttonSecondaryText: { color: colors.text, fontWeight: '600', fontSize: typography.button },
 });
+}

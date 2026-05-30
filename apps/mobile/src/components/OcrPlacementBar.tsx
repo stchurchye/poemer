@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
 import { radius, touch } from '../theme/tokens';
 import { useTextStyles } from '../theme/useTextStyles';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { zh } from '../locales/zh-CN';
 
 type Props = {
@@ -11,9 +12,42 @@ type Props = {
   onConfirm: () => void;
 };
 
+function createOcrPlacementBarStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    bar: {
+      borderTopWidth: 1,
+      borderTopColor: colors.primary,
+      backgroundColor: colors.surface,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      gap: 8,
+    },
+    hint: { color: colors.text, fontWeight: '600' },
+    target: { color: colors.textMuted },
+    actions: { flexDirection: 'row', gap: 10 },
+    btn: {
+      flex: 1,
+      paddingVertical: 14,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      minHeight: touch.comfort,
+      justifyContent: 'center',
+    },
+    btnGhost: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    btnGhostText: { fontWeight: '600' },
+    btnPrimary: { backgroundColor: colors.primary },
+    btnPrimaryText: { color: colors.onPrimary, fontWeight: '700' },
+  });
+}
+
 /** 识图插入：浏览正文、点选光标后确认 */
 export function OcrPlacementBar({ hint, targetLabel, onCancel, onConfirm }: Props) {
   const text = useTextStyles();
+  const styles = useThemedStyles(createOcrPlacementBarStyles);
 
   return (
     <View style={styles.bar}>
@@ -30,33 +64,3 @@ export function OcrPlacementBar({ hint, targetLabel, onCancel, onConfirm }: Prop
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  bar: {
-    borderTopWidth: 1,
-    borderTopColor: colors.primary,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  hint: { color: colors.text, fontWeight: '600' },
-  target: { color: colors.textMuted },
-  actions: { flexDirection: 'row', gap: 10 },
-  btn: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    minHeight: touch.comfort,
-    justifyContent: 'center',
-  },
-  btnGhost: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  btnGhostText: { fontWeight: '600' },
-  btnPrimary: { backgroundColor: colors.primary },
-  btnPrimaryText: { color: colors.onPrimary, fontWeight: '700' },
-});

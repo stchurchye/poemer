@@ -6,9 +6,10 @@ import { ChatScreen } from '../screens/ChatScreen';
 import { MeStack } from './MeStack';
 import type { RootTabParamList } from './types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
 import { zh } from '../locales/zh-CN';
 import { useLayout } from '../theme/layout';
+import { buildRootTabBarStyle } from './tabBarStyle';
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
@@ -41,6 +42,7 @@ function MeTabScreen() {
 }
 
 export function RootTabs() {
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isTablet, tabBarHeight } = useLayout();
 
@@ -51,15 +53,14 @@ export function RootTabs() {
         headerShown: false,
         tabBarIcon: () => null,
         tabBarIconStyle: { display: 'none', height: 0, width: 0 },
-        tabBarActiveTintColor: colors.primary,
+        tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
-        tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          paddingBottom: Math.max(insets.bottom, isTablet ? 8 : 4),
-          paddingTop: isTablet ? 8 : 6,
-          height: tabBarHeight + insets.bottom,
-        },
+        tabBarStyle: buildRootTabBarStyle({
+          colors,
+          bottomInset: insets.bottom,
+          isTablet,
+          tabBarHeight,
+        }),
         tabBarLabelStyle: { fontSize: isTablet ? 22 : 20, fontWeight: '600' },
       }}
     >

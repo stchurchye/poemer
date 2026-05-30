@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -20,18 +23,21 @@ import {
   type TtsDialect,
   type TtsVoiceOption,
 } from '../lib/tts';
+import { AppearancePicker } from '../components/AppearancePicker';
 import { FontSizePresetPicker } from '../components/FontSizePresetPicker';
 import { TabletFrame } from '../components/TabletFrame';
-import { colors, typography } from '../theme/colors';
 import { useFontPreferences } from '../theme/FontPreferencesContext';
 import type { FontSizePreset } from '../theme/fontPresets';
 import { chipMinHeightForFontSize, lineHeightForFontSize } from '../theme/chromeText';
 import { useLayout } from '../theme/layout';
 import { AppVersionFooter } from '../components/AppVersionFooter';
+import { HiddenDocumentsCard } from '../components/HiddenDocumentsCard';
 import { LocalDataCard } from '../components/LocalDataCard';
 import { zh } from '../locales/zh-CN';
 
 export function MeScreen() {
+  const styles = useThemedStyles(createMeScreenStyles);
+
   const navigation = useNavigation<NativeStackNavigationProp<MeStackParamList, 'MeMain'>>();
   const insets = useSafeAreaInsets();
   const { isTablet, bodyFontSize, width, buttonFontSize, captionFontSize } = useLayout();
@@ -144,6 +150,8 @@ export function MeScreen() {
 
         <LocalDataCard />
 
+        <HiddenDocumentsCard />
+
         <Pressable
           style={[styles.menuRow, isTablet && styles.menuRowTablet]}
           onPress={() => navigation.navigate('ApiKeys')}
@@ -157,6 +165,12 @@ export function MeScreen() {
           </View>
           <Text style={styles.menuChevron}>›</Text>
         </Pressable>
+
+        <View style={[styles.card, isTablet && styles.cardBlockTablet]}>
+          <AppearancePicker
+            onSaved={() => appAlert('已保存', zh.me.appearanceSaved)}
+          />
+        </View>
 
         <View style={[styles.card, isTablet && styles.cardBlockTablet]}>
           <FontSizePresetPicker
@@ -255,7 +269,8 @@ export function MeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createMeScreenStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, paddingBottom: 48 },
   contentTablet: { paddingBottom: 56 },
@@ -358,3 +373,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+}

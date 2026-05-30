@@ -1,4 +1,8 @@
 import type { ReactNode } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Pressable,
@@ -31,7 +35,6 @@ import {
   stopCloudRecordingAndTranscribe,
 } from '../lib/cloudSpeech';
 import { apiErrorText } from '../lib/apiError';
-import { colors, typography } from '../theme/colors';
 import { zh } from '../locales/zh-CN';
 import { PrimaryButton } from './PrimaryButton';
 
@@ -87,6 +90,8 @@ export function VoiceInput({
   trailingAction,
   children,
 }: Props) {
+  const styles = useThemedStyles(createVoiceInputStyles);
+
   const { height: windowHeight } = useWindowDimensions();
   const confirmScrollMaxHeight = Math.min(
     280,
@@ -451,7 +456,8 @@ export function VoiceInput({
   );
 }
 
-const styles = StyleSheet.create({
+function createVoiceInputStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   wrap: { flex: 1, gap: 10 },
   wrapEmbedded: { flex: 0, flexGrow: 0, flexShrink: 0 },
   wrapDock: {
@@ -547,3 +553,4 @@ const styles = StyleSheet.create({
   btnLabel: { fontSize: typography.button, color: colors.text, fontWeight: '600' },
   btnLabelActive: { color: colors.onPrimary },
 });
+}

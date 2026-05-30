@@ -1,5 +1,8 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { colors, typography } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { zh } from '../locales/zh-CN';
 
 /** 识图结果插入方式（当前固定为章节末尾） */
@@ -15,6 +18,9 @@ type Props = {
 
 /** 识图录入入口按钮（实际选图逻辑在写作页根级执行，避免嵌套 Modal） */
 export function AssistantOcrFlow({ disabled, busy, onPress, inline }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createAssistantOcrFlowStyles);
+
   return (
     <Pressable
       style={[
@@ -37,7 +43,8 @@ export function AssistantOcrFlow({ disabled, busy, onPress, inline }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createAssistantOcrFlowStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   ocrBtn: {
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -59,3 +66,4 @@ const styles = StyleSheet.create({
   ocrBtnText: { fontSize: typography.caption, color: colors.primary, fontWeight: '600' },
   ocrBtnTextInline: { fontSize: typography.small },
 });
+}

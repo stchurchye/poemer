@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View, type ViewStyle } from 'react-native';
-import { colors } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
 import { useLayout } from '../theme/layout';
+import { useColors } from '../theme/ThemeContext';
 
 const STROKE_RATIO = 2.5 / 24;
 const START_OFFSET = -90;
@@ -16,17 +17,17 @@ type Props = {
 function circleWedge(
   size: number,
   stroke: number,
-  colors: { top: string; right?: string; left?: string },
+  wedgeColors: { top: string; right?: string; left?: string },
 ): ViewStyle {
   return {
     width: size,
     height: size,
     borderRadius: size / 2,
     borderWidth: stroke,
-    borderTopColor: colors.top,
-    borderRightColor: colors.right ?? 'transparent',
+    borderTopColor: wedgeColors.top,
+    borderRightColor: wedgeColors.right ?? 'transparent',
     borderBottomColor: 'transparent',
-    borderLeftColor: colors.left ?? 'transparent',
+    borderLeftColor: wedgeColors.left ?? 'transparent',
   };
 }
 
@@ -35,17 +36,19 @@ function RingGraphic({
   loading,
   size,
   stroke,
+  palette,
 }: {
   ratio: number;
   loading?: boolean;
   size: number;
   stroke: number;
+  palette: ColorPalette;
 }) {
   const clamped = Math.min(1, Math.max(0, ratio));
   const percent = Math.round(clamped * 100);
   const arcColor =
-    percent >= 85 ? colors.error : percent >= 70 ? colors.primary : colors.textMuted;
-  const fillColor = loading ? colors.border : arcColor;
+    percent >= 85 ? palette.error : percent >= 70 ? palette.primary : palette.textMuted;
+  const fillColor = loading ? palette.border : arcColor;
 
   const angle = clamped * 360;
   const rightRotate = START_OFFSET + Math.min(angle, 180);
@@ -59,7 +62,7 @@ function RingGraphic({
           ...StyleSheet.absoluteFillObject,
           borderRadius: size / 2,
           borderWidth: stroke,
-          borderColor: colors.border,
+          borderColor: palette.border,
         }}
       />
       {clamped > 0.001 && !loading ? (
@@ -123,6 +126,7 @@ export function ContextUsageRing({
   onLongPress,
   accessibilityLabel,
 }: Props) {
+  const colors = useColors();
   const { isTablet } = useLayout();
   const size = isTablet ? 36 : 32;
   const stroke = Math.max(2.5, size * STROKE_RATIO);
@@ -130,7 +134,13 @@ export function ContextUsageRing({
 
   const ring = (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <RingGraphic ratio={displayRatio} loading={loading} size={size} stroke={stroke} />
+      <RingGraphic
+        ratio={displayRatio}
+        loading={loading}
+        size={size}
+        stroke={stroke}
+        palette={colors}
+      />
     </View>
   );
 

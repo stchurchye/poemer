@@ -12,7 +12,7 @@ import type { FontChannel } from '../theme/fontPresets';
 import { buildMessageMarkdownStyles } from '../theme/messageMarkdownStyles';
 import { useTextStyles } from '../theme/useTextStyles';
 import { useTypography } from '../theme/layout';
-import { colors } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
 
 type Props = {
   content: string;
@@ -52,6 +52,7 @@ function CodeFenceBlock({
   inheritedStyles: TextStyle;
   fenceStyle: TextStyle;
 }) {
+  const colors = useColors();
   const label = language ? language.toUpperCase() : 'CODE';
 
   return (
@@ -83,6 +84,7 @@ export function MessageRichText({
   channel = 'dialog',
   plainTextStyle,
 }: Props) {
+  const colors = useColors();
   const textStyles = useTextStyles(channel);
   const { bodyFontSize, bodyLineHeight, replyLineHeight, captionFontSize } =
     useTypography(channel);
@@ -92,12 +94,13 @@ export function MessageRichText({
   const markdownStyles = useMemo(
     () =>
       buildMessageMarkdownStyles({
+        colors,
         bodyFontSize,
         bodyLineHeight: contentLineHeight,
         captionFontSize,
         paragraphMarginBottom: variant === 'reply' ? 6 : 10,
       }),
-    [bodyFontSize, contentLineHeight, captionFontSize, variant],
+    [colors, bodyFontSize, contentLineHeight, captionFontSize, variant],
   );
 
   const rules = useMemo<RenderRules>(

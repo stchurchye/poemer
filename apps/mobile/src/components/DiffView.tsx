@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { StyleSheet, Text, View } from 'react-native';
 import type { DiffSegment } from '@shiren/shared';
-import { colors, typography } from '../theme/colors';
 import { lineHeightForFontSize } from '../theme/chromeText';
 import { zh } from '../locales/zh-CN';
 
@@ -58,6 +61,8 @@ export function DiffView({
   compact,
   embedded,
 }: Props) {
+  const styles = useThemedStyles(createDiffViewStyles);
+
   const bodySize = bodyFontSize ?? typography.body;
   const lineHeight =
     bodyLineHeight ?? Math.round(bodySize * 1.22);
@@ -133,7 +138,8 @@ export function DiffView({
   );
 }
 
-const styles = StyleSheet.create({
+function createDiffViewStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   wrap: { gap: 20 },
   wrapCompact: { gap: 10 },
   wrapEmbedded: { gap: 8 },
@@ -226,3 +232,4 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.deleteBorder,
   },
 });
+}

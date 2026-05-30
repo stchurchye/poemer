@@ -1,7 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import type { ContextUsage } from '@shiren/shared';
 import { contextUsageForDisplay, formatTokenCount } from '@shiren/shared';
-import { colors, typography } from '../theme/colors';
 import { zh } from '../locales/zh-CN';
 
 type Props = {
@@ -10,6 +13,9 @@ type Props = {
 };
 
 export function ContextUsageIndicator({ usage, loading }: Props) {
+  const colors = useColors();
+  const styles = useThemedStyles(createContextUsageIndicatorStyles);
+
   if (loading && !usage) {
     return (
       <View style={styles.wrap}>
@@ -42,7 +48,8 @@ export function ContextUsageIndicator({ usage, loading }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createContextUsageIndicatorStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   wrap: {
     paddingVertical: 6,
     paddingHorizontal: 4,
@@ -80,3 +87,4 @@ const styles = StyleSheet.create({
     lineHeight: Math.round(typography.small * 1.4),
   },
 });
+}

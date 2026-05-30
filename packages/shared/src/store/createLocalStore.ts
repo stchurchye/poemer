@@ -136,6 +136,22 @@ export function createLocalStore(
     return clone(updated);
   }
 
+  function hideDocument(id: string): Document | undefined {
+    const doc = documents.get(id);
+    if (!doc) return undefined;
+    const updated = { ...doc, hiddenAt: now(), updatedAt: now() };
+    documents.set(id, updated);
+    return clone(updated);
+  }
+
+  function restoreDocument(id: string): Document | undefined {
+    const doc = documents.get(id);
+    if (!doc) return undefined;
+    const updated = { ...doc, hiddenAt: null, updatedAt: now() };
+    documents.set(id, updated);
+    return clone(updated);
+  }
+
   function saveDocumentContent(
     documentId: string,
     chapterId: string,
@@ -151,6 +167,22 @@ export function createLocalStore(
         blocks: ch.blocks.map((b) => (b.id === blockId ? { ...b, content } : b)),
       };
     });
+    return updateDocument(documentId, { chapters });
+  }
+
+  function updateChapterTitle(
+    documentId: string,
+    chapterId: string,
+    title: string,
+  ): Document | undefined {
+    const doc = documents.get(documentId);
+    if (!doc) return undefined;
+    const chapter = doc.chapters.find((c) => c.id === chapterId);
+    if (!chapter) return undefined;
+    if (chapter.title === title) return clone(doc);
+    const chapters = doc.chapters.map((ch) =>
+      ch.id === chapterId ? { ...ch, title } : ch,
+    );
     return updateDocument(documentId, { chapters });
   }
 
@@ -449,7 +481,10 @@ export function createLocalStore(
     listDocuments,
     getDocument,
     updateDocument,
+    hideDocument,
+    restoreDocument,
     saveDocumentContent,
+    updateChapterTitle,
     addChapter,
     createRevision,
     acceptRevision,

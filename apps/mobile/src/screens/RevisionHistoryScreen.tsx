@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import {
   Pressable,
   ScrollView,
@@ -14,7 +18,6 @@ import { api } from '../lib/api';
 import { openDiffPreview } from '../lib/openDiffPreview';
 import { resolveSuggestionViewPolicy } from '../lib/suggestionViewOnly';
 import { TabletFrame } from '../components/TabletFrame';
-import { colors, typography } from '../theme/colors';
 import { useLayout, useTypography } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 import type { WritingStackParamList } from '../navigation/types';
@@ -22,6 +25,8 @@ import type { WritingStackParamList } from '../navigation/types';
 type Props = NativeStackScreenProps<WritingStackParamList, 'RevisionHistory'>;
 
 export function RevisionHistoryScreen({ route, navigation }: Props) {
+  const styles = useThemedStyles(createRevisionHistoryScreenStyles);
+
   const { documentId, title } = route.params;
   const { titleFontSize, buttonFontSize } = useLayout();
   const { bodyFontSize, bodyLineHeight } = useTypography('article');
@@ -117,7 +122,8 @@ export function RevisionHistoryScreen({ route, navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+function createRevisionHistoryScreenStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 20, paddingBottom: 40 },
   title: { fontSize: typography.title, fontWeight: '700', color: colors.text, marginBottom: 16 },
@@ -160,3 +166,4 @@ const styles = StyleSheet.create({
     lineHeight: typography.bodyLineHeight,
   },
 });
+}

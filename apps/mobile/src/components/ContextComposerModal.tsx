@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { ColorPalette } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import {
   ActivityIndicator,
   Modal,
@@ -26,7 +29,6 @@ import { apiErrorText } from '../lib/apiError';
 import { ContextUsageDetailContent } from './ContextUsageDetailModal';
 import { ContextPreviewBlockRow } from './ContextPreviewBlockRow';
 import { ContextPreviewSectionHeader } from './ContextPreviewSectionHeader';
-import { colors } from '../theme/colors';
 import { useLayout } from '../theme/layout';
 import { zh } from '../locales/zh-CN';
 
@@ -63,11 +65,14 @@ export function ContextComposerModal({
   chapterContent = '',
   documentExcerpt = '',
 }: Props) {
+  const styles = useThemedStyles(createContextComposerModalStyles);
+
   const { titleFontSize, bodyFontSize, captionFontSize, buttonFontSize } = useLayout();
   const [preview, setPreview] = useState<ContextPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const colors = useColors();
   const [promptExpanded, setPromptExpanded] = useState(false);
 
   const fetchPreview = useCallback(
@@ -294,7 +299,8 @@ export function ContextComposerModal({
   );
 }
 
-const styles = StyleSheet.create({
+function createContextComposerModalStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   page: {
     flex: 1,
     backgroundColor: colors.background,
@@ -413,3 +419,4 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 });
+}

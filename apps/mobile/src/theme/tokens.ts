@@ -1,3 +1,5 @@
+import type { ColorPalette } from './colors';
+
 /** 圆角、触控等布局令牌（字号见 colors.typography，响应式见 useLayout） */
 export const radius = {
   sm: 10,
@@ -10,8 +12,8 @@ export const touch = {
   comfort: 52,
 } as const;
 
-export const shadow = {
-  color: '#0a0a14',
-} as const;
-
-export { colors, typography } from './colors';
+export function shadowFor(colors: ColorPalette) {
+  return {
+    color: colors.background === '#121212' ? '#000000' : '#0a0a14',
+  } as const;
+}

@@ -2,9 +2,10 @@ import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } fr
 import { AppTextInput } from './AppTextInput';
 import { AppModalShell } from './AppModalShell';
 import { ModalKeyboardDismissBar } from './ModalKeyboardDismissBar';
-import { colors } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
 import { radius, touch } from '../theme/tokens';
 import { useTextStyles } from '../theme/useTextStyles';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { zh } from '../locales/zh-CN';
 
 const INPUT_MIN_HEIGHT_LARGE = 480;
@@ -20,6 +21,37 @@ type Props = {
   onNext: () => void;
 };
 
+function createOcrConfirmModalStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    scroll: { flexGrow: 0 },
+    hint: { marginBottom: 12 },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      padding: 16,
+      backgroundColor: colors.inputSurface,
+    },
+    actions: { flexDirection: 'row', gap: 10, marginTop: 16 },
+    btn: {
+      flex: 1,
+      paddingVertical: 16,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      minHeight: touch.comfort,
+      justifyContent: 'center',
+    },
+    btnGhost: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+    },
+    btnGhostText: { fontWeight: '600' },
+    btnPrimary: { backgroundColor: colors.primary },
+    btnPrimaryText: { color: colors.onPrimary, fontWeight: '700' },
+  });
+}
+
 export function OcrConfirmModal({
   visible,
   draft,
@@ -27,6 +59,7 @@ export function OcrConfirmModal({
   onClose,
   onNext,
 }: Props) {
+  const styles = useThemedStyles(createOcrConfirmModalStyles);
   const { height: windowHeight } = useWindowDimensions();
   const text = useTextStyles();
   const inputMinHeight = Math.min(
@@ -78,32 +111,3 @@ export function OcrConfirmModal({
     </AppModalShell>
   );
 }
-
-const styles = StyleSheet.create({
-  scroll: { flexGrow: 0 },
-  hint: { marginBottom: 12 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    padding: 16,
-    backgroundColor: colors.background,
-  },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  btn: {
-    flex: 1,
-    paddingVertical: 16,
-    borderRadius: radius.sm,
-    alignItems: 'center',
-    minHeight: touch.comfort,
-    justifyContent: 'center',
-  },
-  btnGhost: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  btnGhostText: { fontWeight: '600' },
-  btnPrimary: { backgroundColor: colors.primary },
-  btnPrimaryText: { color: colors.onPrimary, fontWeight: '700' },
-});

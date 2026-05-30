@@ -9,6 +9,7 @@ import {
   type TextInput as TextInputType,
   type ViewStyle,
 } from 'react-native';
+import { useColors, useTheme } from '../theme/ThemeContext';
 
 export type AppTextInputVariant = 'default' | 'compose';
 
@@ -23,9 +24,11 @@ type Props = TextInputProps & {
 };
 
 export const AppTextInput = forwardRef<TextInputType, Props>(function AppTextInput(
-  { style, containerStyle, multiline, variant = 'default', ...rest },
+  { style, containerStyle, multiline, variant = 'default', placeholderTextColor, keyboardAppearance, ...rest },
   ref,
 ) {
+  const colors = useColors();
+  const { appearance } = useTheme();
   const isCompose = variant === 'compose';
   const wrapStyle = multiline
     ? isCompose
@@ -45,6 +48,8 @@ export const AppTextInput = forwardRef<TextInputType, Props>(function AppTextInp
         multiline={multiline}
         showSoftInputOnFocus={Platform.OS === 'ios' ? true : undefined}
         style={[inputStyle, style]}
+        placeholderTextColor={placeholderTextColor ?? colors.textMuted}
+        keyboardAppearance={keyboardAppearance ?? (appearance === 'dark' ? 'dark' : 'light')}
         {...rest}
       />
     </View>

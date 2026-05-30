@@ -16,7 +16,10 @@ export declare function createLocalStore(initial: PersistedStore, deps?: {
     listDocuments: () => Document[];
     getDocument: (id: string) => Document | undefined;
     updateDocument: (id: string, patch: Partial<Document>) => Document | undefined;
+    hideDocument: (id: string) => Document | undefined;
+    restoreDocument: (id: string) => Document | undefined;
     saveDocumentContent: (documentId: string, chapterId: string, blockId: string, content: string) => Document | undefined;
+    updateChapterTitle: (documentId: string, chapterId: string, title: string) => Document | undefined;
     addChapter: (documentId: string, title?: string) => Document | undefined;
     createRevision: (input: Omit<Revision, "id" | "createdAt" | "timezone">) => Revision;
     acceptRevision: (revisionId: string, editedSnapshot?: string) => Revision | undefined;

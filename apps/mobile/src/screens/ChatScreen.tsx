@@ -1,4 +1,9 @@
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { ColorPalette } from '../theme/colors';
+import { typography } from '../theme/colors';
+import { useColors } from '../theme/ThemeContext';
+import { useThemedStyles } from '../theme/useThemedStyles';
+import { useChatMessageStyles } from '../theme/chatMessage';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -66,9 +71,7 @@ import { ContextUsageDetailModal } from '../components/ContextUsageDetailModal';
 import { ChatToolsPanel } from '../components/ChatToolsPanel';
 import { TabletFrame } from '../components/TabletFrame';
 import { WritingAssistantSheet } from '../components/WritingAssistantSheet';
-import { colors, typography } from '../theme/colors';
 import { useLayout } from '../theme/layout';
-import { chatMessageStyles } from '../theme/chatMessage';
 import { useTextStyles } from '../theme/useTextStyles';
 import type { RootTabParamList } from '../navigation/types';
 import { zh } from '../locales/zh-CN';
@@ -91,6 +94,10 @@ function localChatMessage(
 }
 
 export function ChatScreen() {
+  const colors = useColors();
+  const styles = useThemedStyles(createChatScreenStyles);
+  const chatMessageStyles = useChatMessageStyles();
+
   const tabNav = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
   const insets = useSafeAreaInsets();
   const { isTablet } = useLayout();
@@ -978,7 +985,8 @@ export function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createChatScreenStyles(colors: ColorPalette) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   frame: { flex: 1 },
   shell: { flex: 1, minHeight: 0, position: 'relative' },
@@ -1050,3 +1058,4 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+}

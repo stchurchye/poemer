@@ -30,7 +30,7 @@ export declare function zenmuxChatWithImages(params: {
     images: ZenMuxChatImage[];
     imageNotice: string;
 }): Promise<string>;
-/** 多轮纯文本对话（问问题回答，Claude Sonnet 4.6） */
+/** 多轮纯文本对话（问问题回答，GPT-5.4） */
 export declare function zenmuxCompleteMessages(params: {
     apiKey: string;
     messages: Array<{

@@ -1,11 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme/colors';
+import type { ColorPalette } from '../theme/colors';
 import {
   FONT_SIZE_PRESETS,
   resolveFontMetrics,
   type FontSizePreset,
 } from '../theme/fontPresets';
 import { useLayout } from '../theme/layout';
+import { useThemedStyles } from '../theme/useThemedStyles';
 import { zh } from '../locales/zh-CN';
 
 const PRESET_LABEL: Record<FontSizePreset, string> = {
@@ -28,7 +29,43 @@ function chipLabelLineHeight(fontSize: number) {
   return Math.round(fontSize * 1.12);
 }
 
+function createFontSizePresetPickerStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    block: { marginBottom: 24 },
+    sectionTitle: {
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 14,
+    },
+    sectionTitleTablet: { marginBottom: 16 },
+    chipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 14,
+    },
+    chip: {
+      flex: 1,
+      paddingHorizontal: 6,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    chipActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primarySoft,
+    },
+    chipText: { color: colors.textMuted, fontWeight: '600' },
+    chipTextActive: { color: colors.text },
+    sample: { color: colors.text },
+  });
+}
+
 export function FontSizePresetPicker({ title, sampleText, value, onChange }: Props) {
+  const styles = useThemedStyles(createFontSizePresetPickerStyles);
   const { isTablet, buttonFontSize, captionFontSize } = useLayout();
   const sampleMetrics = resolveFontMetrics(value, isTablet);
   const xlargeBodySize = resolveFontMetrics('xlarge', isTablet).bodyFontSize;
@@ -87,36 +124,3 @@ export function FontSizePresetPicker({ title, sampleText, value, onChange }: Pro
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  block: { marginBottom: 24 },
-  sectionTitle: {
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 14,
-  },
-  sectionTitleTablet: { marginBottom: 16 },
-  chipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 14,
-  },
-  chip: {
-    flex: 1,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  chipActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  chipText: { color: colors.textMuted, fontWeight: '600' },
-  chipTextActive: { color: colors.text },
-  sample: { color: colors.text },
-});

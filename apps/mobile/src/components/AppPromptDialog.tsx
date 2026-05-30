@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppTextInput } from './AppTextInput';
 import { zh } from '../locales/zh-CN';
-import { colors } from '../theme/colors';
-import { modalStyles } from '../theme/modalStyles';
+import type { ColorPalette } from '../theme/colors';
+import { useModalStyles } from '../theme/modalStyles';
 import { radius, touch } from '../theme/tokens';
 import { useLayout } from '../theme/layout';
 import { useTextStyles } from '../theme/useTextStyles';
+import { useThemedStyles } from '../theme/useThemedStyles';
 
 type Props = {
   visible: boolean;
@@ -17,6 +18,61 @@ type Props = {
   onConfirm: (value: string) => void;
 };
 
+function createAppPromptDialogStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    card: {
+      paddingHorizontal: 24,
+      paddingTop: 28,
+      paddingBottom: 22,
+      borderRadius: radius.md,
+    },
+    title: {
+      textAlign: 'center',
+      marginBottom: 12,
+    },
+    message: {
+      textAlign: 'center',
+      color: colors.textMuted,
+      marginBottom: 16,
+    },
+    input: {
+      width: '100%',
+      minHeight: touch.comfort,
+      paddingHorizontal: 16,
+      marginBottom: 20,
+      borderRadius: radius.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.background,
+      color: colors.text,
+    },
+    btnRow: {
+      gap: 12,
+    },
+    btnRowHorizontal: {
+      flexDirection: 'row',
+    },
+    btn: {
+      minHeight: touch.comfort,
+      paddingHorizontal: 20,
+      paddingVertical: 14,
+      borderRadius: radius.pill,
+      backgroundColor: colors.primarySoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    btnFlex: {
+      flex: 1,
+    },
+    btnPressed: {
+      opacity: 0.85,
+    },
+    btnLabel: {
+      textAlign: 'center',
+    },
+  });
+}
+
 export function AppPromptDialog({
   visible,
   title,
@@ -25,7 +81,9 @@ export function AppPromptDialog({
   onCancel,
   onConfirm,
 }: Props) {
+  const modalStyles = useModalStyles();
   const text = useTextStyles();
+  const styles = useThemedStyles(createAppPromptDialogStyles);
   const { captionFontSize } = useLayout();
   const inputLineHeight = Math.round(captionFontSize * 1.25);
   const inputVerticalPad = Math.max(8, Math.floor((touch.comfort - inputLineHeight) / 2));
@@ -53,7 +111,6 @@ export function AppPromptDialog({
             value={draft}
             onChangeText={setDraft}
             autoFocus
-            placeholderTextColor={colors.textMuted}
             style={[
               styles.input,
               {
@@ -86,56 +143,3 @@ export function AppPromptDialog({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 22,
-    borderRadius: radius.md,
-  },
-  title: {
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  message: {
-    textAlign: 'center',
-    color: colors.textMuted,
-    marginBottom: 16,
-  },
-  input: {
-    width: '100%',
-    minHeight: touch.comfort,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    color: colors.text,
-  },
-  btnRow: {
-    gap: 12,
-  },
-  btnRowHorizontal: {
-    flexDirection: 'row',
-  },
-  btn: {
-    minHeight: touch.comfort,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  btnFlex: {
-    flex: 1,
-  },
-  btnPressed: {
-    opacity: 0.85,
-  },
-  btnLabel: {
-    textAlign: 'center',
-  },
-});
