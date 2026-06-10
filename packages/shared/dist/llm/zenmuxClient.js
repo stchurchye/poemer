@@ -158,6 +158,7 @@ async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
             `ZenMux Anthropic 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
+    options.onMeta?.({ status: res.status });
     return parseAnthropicResponse(json, options.appendCitations);
 }
 function isPlainTextMessages(messages) {
@@ -201,6 +202,7 @@ async function zenmuxChat(apiKey, messages, options) {
         const msg = json.error?.message ?? `ZenMux 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
+    options?.onMeta?.({ status: res.status });
     const message = json.choices?.[0]?.message;
     const raw = message?.content?.trim();
     if (!raw)
@@ -263,6 +265,7 @@ export async function zenmuxCompleteMessages(params) {
         temperature: params.temperature,
         model: params.model,
         webSearch: params.webSearch,
+        onMeta: params.onMeta,
     });
 }
 export async function verifyZenMuxKey(apiKey) {

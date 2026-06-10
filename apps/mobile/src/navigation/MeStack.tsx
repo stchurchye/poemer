@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ApiKeysScreen } from '../screens/ApiKeysScreen';
+import { LlmLogsScreen } from '../screens/LlmLogsScreen';
 import { MeScreen } from '../screens/MeScreen';
 import type { MeStackParamList } from './types';
 import { useColors } from '../theme/ThemeContext';
@@ -24,6 +25,11 @@ export function MeStack() {
         name="ApiKeys"
         component={ApiKeysScreen}
         options={{ title: zh.me.keysMenuTitle }}
+      />
+      <Stack.Screen
+        name="LlmLogs"
+        component={LlmLogsScreen}
+        options={{ title: zh.me.llmLogsMenuTitle }}
       />
     </Stack.Navigator>
   );

@@ -41,6 +41,9 @@ export declare function zenmuxCompleteMessages(params: {
     temperature?: number;
     model?: string;
     webSearch?: ZenMuxWebSearchOptions;
+    onMeta?: (meta: {
+        status: number;
+    }) => void;
 }): Promise<string>;
 export declare function verifyZenMuxKey(apiKey: string): Promise<void>;
 //# sourceMappingURL=zenmuxClient.d.ts.map

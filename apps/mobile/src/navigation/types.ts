@@ -29,6 +29,7 @@ export type WritingStackParamList = {
 export type MeStackParamList = {
   MeMain: undefined;
   ApiKeys: undefined;
+  LlmLogs: undefined;
 };
 
 export type RootTabParamList = {

@@ -46,6 +46,11 @@ type ZenMuxChatOptions = {
   webSearch?: ZenMuxWebSearchOptions;
   /** 是否在回复末尾自动拼接「参考来源」；问问题默认关闭 */
   appendCitations?: boolean;
+  /**
+   * 拿到 HTTP 响应后回调，用于诊断日志记录状态码。
+   * 仅成功路径需要（失败已由 ZenMuxError.status 携带）。
+   */
+  onMeta?: (meta: { status: number }) => void;
 };
 
 function buildWebSearchBody(webSearch?: ZenMuxWebSearchOptions): Record<string, unknown> | undefined {
@@ -232,6 +237,7 @@ async function callAnthropicMessagesWithWebSearch(
     throw new ZenMuxError(msg, res.status);
   }
 
+  options.onMeta?.({ status: res.status });
   return parseAnthropicResponse(json, options.appendCitations);
 }
 
@@ -304,6 +310,7 @@ async function zenmuxChat(
     throw new ZenMuxError(msg, res.status);
   }
 
+  options?.onMeta?.({ status: res.status });
   const message = json.choices?.[0]?.message;
   const raw = message?.content?.trim();
   if (!raw) throw new ZenMuxError('ZenMux 没有返回内容');
@@ -385,12 +392,14 @@ export async function zenmuxCompleteMessages(params: {
   temperature?: number;
   model?: string;
   webSearch?: ZenMuxWebSearchOptions;
+  onMeta?: (meta: { status: number }) => void;
 }): Promise<string> {
   return zenmuxChat(params.apiKey, params.messages, {
     maxTokens: params.maxTokens,
     temperature: params.temperature,
     model: params.model,
     webSearch: params.webSearch,
+    onMeta: params.onMeta,
   });
 }
 

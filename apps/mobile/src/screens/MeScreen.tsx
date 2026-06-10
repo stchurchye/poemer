@@ -166,6 +166,20 @@ export function MeScreen() {
           <Text style={styles.menuChevron}>›</Text>
         </Pressable>
 
+        <Pressable
+          style={[styles.menuRow, isTablet && styles.menuRowTablet]}
+          onPress={() => navigation.navigate('LlmLogs')}
+          accessibilityRole="button"
+        >
+          <View style={styles.menuRowBody}>
+            <Text style={[styles.menuRowTitle, { fontSize: buttonFontSize }]}>
+              {zh.me.llmLogsMenuTitle}
+            </Text>
+            <Text style={styles.menuRowSubtitle}>{zh.me.llmLogsMenuSubtitle}</Text>
+          </View>
+          <Text style={styles.menuChevron}>›</Text>
+        </Pressable>
+
         <View style={[styles.card, isTablet && styles.cardBlockTablet]}>
           <AppearancePicker
             onSaved={() => appAlert('已保存', zh.me.appearanceSaved)}

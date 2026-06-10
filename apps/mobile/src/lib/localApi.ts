@@ -153,15 +153,19 @@ function rethrowAsApiError(e: unknown): never {
 }
 
 async function intentModel() {
-  return createDeepSeekModelClient();
+  return createDeepSeekModelClient('DeepSeek·意图/改稿');
 }
 
 async function textModel() {
-  return createZenMuxModelClient();
+  return createZenMuxModelClient({ label: 'ZenMux·侧栏闲聊' });
 }
 
 async function chatReplyModel() {
-  return createZenMuxModelClient({ model: ZENMUX_MODEL_CHAT, webSearch: true });
+  return createZenMuxModelClient({
+    model: ZENMUX_MODEL_CHAT,
+    webSearch: true,
+    label: 'ZenMux·问问题正文',
+  });
 }
 
 export function createLocalApi(deps: {

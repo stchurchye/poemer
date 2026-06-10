@@ -203,7 +203,9 @@ async function main() {
           model: DEEPSEEK_MODEL_PRO,
           messages: [{ role: 'user', content: '回复：好' }],
           max_tokens: 32,
-          extra_body: { thinking: { type: 'disabled' } },
+          // 裸 HTTP 直发要用顶层字段；extra_body 是 OpenAI SDK 的封装，DeepSeek 不识别会被忽略。
+          // 与 App localModelClient 现在的关闭方式保持一致。
+          thinking: { type: 'disabled' },
         });
         if (disabled.hasContent) {
           ok('DeepSeek 对照 (thinking=disabled, max_tokens=32)', disabled.text);
@@ -305,7 +307,8 @@ async function main() {
     const ds = createDeepSeekModelClient(deepseekKey);
     try {
       const chatIntent = await analyzeWritingIntentLocal(ds, {
-        userMessage: '这段怎么写开头比较好',
+        content: '这段怎么写开头比较好',
+        chapterTitle: '第一章',
         chapterContent: '春天来了，花儿开了。',
         history: [],
       });
@@ -316,7 +319,8 @@ async function main() {
 
     try {
       const reviseIntent = await analyzeWritingIntentLocal(ds, {
-        userMessage: '帮我把这一段润色一下',
+        content: '帮我把这一段润色一下',
+        chapterTitle: '第一章',
         chapterContent: '春天来了，花儿开了。',
         history: [],
       });
