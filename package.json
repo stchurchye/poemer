@@ -14,7 +14,8 @@
     "docker:logs": "docker compose logs -f api",
     "build": "npm run build -w @shiren/shared && npm run build -w @shiren/engine && npm run build -w @shiren/api",
     "postinstall": "npm run build -w @shiren/shared && npm run build -w @shiren/engine",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "diagnose:llm": "node scripts/diagnose-llm-paths.mjs"
   },
   "engines": {
     "node": ">=20"
