@@ -7,7 +7,47 @@ export class ZenMuxError extends Error {
         this.name = 'ZenMuxError';
     }
 }
-function buildWebSearchBody(webSearch) {
+/**
+ * 纯函数：解析一段 SSE 文本缓冲，抽出 delta 文本、（末尾的）usage、是否 [DONE]，
+ * 并返回未消费的残余（跨 chunk 半行）。放 shared 便于 Node 单测；真正的流式 fetch 在 mobile 端。
+ */
+export function parseZenMuxSseChunk(buffer) {
+    const lines = buffer.split('\n');
+    const rest = lines.pop() ?? '';
+    const deltas = [];
+    let usage;
+    let done = false;
+    for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:'))
+            continue;
+        const data = t.slice(5).trim();
+        if (data === '[DONE]') {
+            done = true;
+            continue;
+        }
+        try {
+            const json = JSON.parse(data);
+            const delta = json.choices?.[0]?.delta?.content;
+            if (typeof delta === 'string' && delta.length > 0)
+                deltas.push(delta);
+            const u = json.usage;
+            if (u) {
+                usage = {
+                    promptTokens: u.prompt_tokens,
+                    completionTokens: u.completion_tokens,
+                    totalTokens: u.total_tokens,
+                    cacheHitTokens: u.prompt_tokens_details?.cached_tokens,
+                };
+            }
+        }
+        catch {
+            // 半行/非 JSON，忽略
+        }
+    }
+    return { deltas, usage, rest, done };
+}
+export function buildWebSearchBody(webSearch) {
     if (!webSearch?.enabled)
         return undefined;
     const userLocation = {

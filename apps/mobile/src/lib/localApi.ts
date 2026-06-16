@@ -24,6 +24,7 @@ import {
   previewWritingIntentContextUsage,
   runWritingExecute,
   runWritingExecuteRetry,
+  streamChatMessages,
   summarizeChatSessionTitleLocal,
   type ContextStoreAdapter,
 } from '@shiren/engine';
@@ -338,6 +339,10 @@ export function createLocalApi(deps: {
         images?: unknown[];
         imagePreviewUris?: string[];
         contextSelection?: ContextSelection;
+        /** 提供则纯文字回答走流式，逐段回调 */
+        onDelta?: (chunk: string) => void;
+        /** 取消流（切会话/退出） */
+        signal?: AbortSignal;
       },
     ) => {
       const text = body.content?.trim() ?? '';
@@ -401,8 +406,17 @@ export function createLocalApi(deps: {
             }
             throw e;
           }
+        } else if (body.onDelta) {
+          // 流式：逐段回调，结束拿全文 + 真实 usage
+          const streamed = await streamChatMessages(
+            await chatReplyModel(),
+            prepared.messages,
+            { onDelta: body.onDelta, signal: body.signal },
+          );
+          reply = streamed.text;
+          replyPromptTokens = streamed.usage?.promptTokens;
         } else {
-          // 直接用 model.complete 拿真实 token 用量（completeChatMessages 会丢掉 usage）
+          // 非流式：直接用 model.complete 拿真实 token 用量
           const completion = await (await chatReplyModel()).complete({
             messages: prepared.messages,
           });

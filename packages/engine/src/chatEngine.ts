@@ -8,7 +8,8 @@ import {
   parseWritingIntentResponse,
   type ReplyDialect,
 } from '@shiren/shared';
-import type { ModelClient } from './modelClient.js';
+import type { ModelTokenUsage } from '@shiren/shared';
+import type { ModelClient, ModelStreamCallbacks } from './modelClient.js';
 
 export type ChatEngineInput = {
   session: ChatSession;
@@ -111,6 +112,26 @@ export async function completeChatMessages(
 ): Promise<string> {
   const res = await model.complete({ messages, ...options });
   return res.text.trim();
+}
+
+/**
+ * 流式补全：model 支持 completeStream 则逐段 onDelta，否则降级为一次性 complete 后回调全文。
+ * 返回累加全文（已 trim）+ usage。
+ */
+export async function streamChatMessages(
+  model: ModelClient,
+  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+  cb: ModelStreamCallbacks,
+  options?: { maxTokens?: number; temperature?: number },
+): Promise<{ text: string; usage?: ModelTokenUsage }> {
+  if (model.completeStream) {
+    const res = await model.completeStream({ messages, ...options }, cb);
+    return { text: res.text.trim(), usage: res.usage };
+  }
+  const res = await model.complete({ messages, ...options });
+  const text = res.text.trim();
+  if (text) cb.onDelta(text);
+  return { text, usage: res.usage };
 }
 
 export async function generateChatReply(

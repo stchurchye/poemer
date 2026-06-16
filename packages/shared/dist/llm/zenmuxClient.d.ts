@@ -14,6 +14,17 @@ export type ZenMuxWebSearchOptions = {
     region?: string;
     timezone?: string;
 };
+/**
+ * 纯函数：解析一段 SSE 文本缓冲，抽出 delta 文本、（末尾的）usage、是否 [DONE]，
+ * 并返回未消费的残余（跨 chunk 半行）。放 shared 便于 Node 单测；真正的流式 fetch 在 mobile 端。
+ */
+export declare function parseZenMuxSseChunk(buffer: string): {
+    deltas: string[];
+    usage?: ModelTokenUsage;
+    rest: string;
+    done: boolean;
+};
+export declare function buildWebSearchBody(webSearch?: ZenMuxWebSearchOptions): Record<string, unknown> | undefined;
 /** 识图识字（Gemini 多模态） */
 export declare function zenmuxOcr(params: {
     apiKey: string;
