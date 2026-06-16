@@ -1,5 +1,5 @@
 import type { ModelClient, ModelCompletionInput } from '@shiren/engine';
-import { DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_PRO } from '@shiren/shared';
+import { DEEPSEEK_BASE_URL, DEEPSEEK_MODEL_PRO, type ModelTokenUsage } from '@shiren/shared';
 import { getDeepSeekApiKey } from './deepseekKey';
 import { logLlmFailure, logLlmSuccess } from './llmLog';
 
@@ -57,10 +57,27 @@ export function createDeepSeekModelClient(label = 'DeepSeek'): ModelClient {
           choices?: Array<{
             message?: { content?: string; reasoning_content?: string };
           }>;
+          usage?: {
+            prompt_tokens?: number;
+            completion_tokens?: number;
+            total_tokens?: number;
+            prompt_cache_hit_tokens?: number;
+            prompt_cache_miss_tokens?: number;
+          };
           error?: { message?: string };
         };
         const message = json?.choices?.[0]?.message;
         const text = message?.content;
+        const u = json?.usage;
+        const usage: ModelTokenUsage | undefined = u
+          ? {
+              promptTokens: u.prompt_tokens,
+              completionTokens: u.completion_tokens,
+              totalTokens: u.total_tokens,
+              cacheHitTokens: u.prompt_cache_hit_tokens,
+              cacheMissTokens: u.prompt_cache_miss_tokens,
+            }
+          : undefined;
         if (!res.ok || typeof text !== 'string' || text.length === 0) {
           const reasoningOnly =
             res.ok && typeof message?.reasoning_content === 'string';
@@ -88,8 +105,9 @@ export function createDeepSeekModelClient(label = 'DeepSeek'): ModelClient {
           status,
           startedAt,
           contentLen: text.length,
+          usage,
         });
-        return { text };
+        return { text, usage };
       } catch (e) {
         if (e instanceof LocalModelError) throw e;
         logLlmFailure({

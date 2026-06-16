@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AssistantGuideKey, ChatSession, ContextSelection, ContextUsage } from '@shiren/shared';
 import { api } from '../lib/api';
 import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
+import { getStoredSkipIntentReview, textNeedsIntentReview } from '../lib/messagePreferences';
 import { useReconnectEffect, useSuppressGlobalOfflineBanner } from '../context/ApiConnectivityContext';
 import { HeaderChipButton } from '../components/HeaderChipButton';
 import { LoadErrorView } from '../components/LoadErrorView';
@@ -173,7 +174,11 @@ export function ChatScreen() {
           pending,
           contextSelection: contextSelection ?? undefined,
         });
-        setContextUsage(res.data);
+        // 预览只更新估算占比；保留上次发送的真实用量（供「实际用量」行），直到下次发送或切会话
+        setContextUsage((prev) => ({
+          ...res.data,
+          actualPromptTokens: prev?.actualPromptTokens,
+        }));
       } catch {
         setContextUsage(null);
       } finally {
@@ -342,7 +347,11 @@ export function ChatScreen() {
     setCompactBusy(true);
     try {
       const res = await api.compactChatSession(sessionId);
-      setContextUsage(res.data.contextUsage);
+      // 压缩不是「发送」，保留上次发送的真实用量（与 refreshContextUsage 一致）
+      setContextUsage((prev) => ({
+        ...res.data.contextUsage,
+        actualPromptTokens: prev?.actualPromptTokens,
+      }));
       const compactText = res.data.assistantMessage.content?.trim() ?? '';
       setMessages((prev) => [
         ...prev,
@@ -468,6 +477,10 @@ export function ChatScreen() {
         if (res.data.session) {
           setSession(res.data.session);
         }
+        // 应用本次发送返回的用量（含 actualPromptTokens 真实值），供圆环详情「实际用量」行展示
+        if (res.data.contextUsage) {
+          setContextUsage(res.data.contextUsage);
+        }
         void refreshSessions();
         scrollToEnd();
       } catch (e) {
@@ -537,6 +550,18 @@ export function ChatScreen() {
         if (source === 'text') setInput('');
         await dispatchChatMessage(trimmed, [...images]);
         return;
+      }
+
+      // 「直接发送」开关：普通文字问题跳过意图整理直接回答；
+      // 但改文章/改字、改字体/声音/语言/换话题等仍走完整意图（保留重定向与设置引导）。
+      if (source === 'text') {
+        const skipReview = await getStoredSkipIntentReview();
+        if (skipReview && !textNeedsIntentReview(trimmed)) {
+          setInput('');
+          setPendingIntent(null);
+          await dispatchChatMessage(trimmed);
+          return;
+        }
       }
 
       const sessionId = session?.id ?? (await ensureSession());
@@ -631,6 +656,8 @@ export function ChatScreen() {
       if (sending || intentAnalyzing || session?.id === sessionId) return;
       setPendingIntent(null);
       setPendingImages([]);
+      // 切会话先清空用量，避免上个会话的「实际用量」被 refreshContextUsage 带进新会话
+      setContextUsage(null);
       typewriterAbortRef.current?.abort();
       void cancelAssistantFeedback();
       void stopSpeaking();

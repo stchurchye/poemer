@@ -26,17 +26,31 @@ export type ContextUsage = {
     breakdown: ContextUsageBreakdown;
     compacted: boolean;
     droppedVerbatimTurns: number;
+    /** 上次实际发送时平台返回的真实 prompt token（供详情弹窗「实际用量」行），发送前为空 */
+    actualPromptTokens?: number;
 };
 export declare const DEFAULT_CONTEXT_WINDOW_TOKENS = 300000;
 export declare const DEFAULT_OUTPUT_RESERVE_TOKENS = 8000;
-/** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限 */
-export declare const COMPACT_SUMMARY_MAX_TOKENS = 100000;
-export declare const COMPACT_THRESHOLD_RATIO = 0.8;
+/**
+ * 「软工作窗口」：模型物理窗口（300k）很大，但日常聊天/写作远到不了，
+ * 致使压缩几乎不触发、用量圆环永远接近 0%。这里设更小的软目标来真正驱动
+ * 滑动窗口与摘要压缩；物理窗口仍由 getContextWindowTokens() 作安全上限。
+ */
+export declare const DEFAULT_CHAT_WORKING_WINDOW_TOKENS = 24000;
+/** 写作侧栏要容纳「待改本章 + 全篇节选」，窗口略大 */
+export declare const DEFAULT_WRITING_WORKING_WINDOW_TOKENS = 48000;
+/** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限（真正起到压缩作用） */
+export declare const COMPACT_SUMMARY_MAX_TOKENS = 2500;
+export declare const COMPACT_THRESHOLD_RATIO = 0.7;
 export declare const ESTIMATE_CHARS_PER_TOKEN = 1.6;
 export declare const SUMMARY_PREFIX = "\u3010\u6B64\u524D\u5BF9\u8BDD\u6458\u8981\u3011\n";
 export declare function getContextWindowTokens(): number;
 export declare function getOutputReserveTokens(): number;
 export declare function getCompactSummaryMaxTokens(): number;
+/** 问答对话的软工作窗口（驱动滑窗 + 压缩，可用 env CHAT_WORKING_WINDOW_TOKENS 覆盖） */
+export declare function getChatWorkingWindowTokens(): number;
+/** 写作侧栏的软工作窗口（可用 env WRITING_WORKING_WINDOW_TOKENS 覆盖） */
+export declare function getWritingWorkingWindowTokens(): number;
 /** 将摘要正文裁到 COMPACT_SUMMARY_MAX_TOKENS，再包上前缀 */
 export declare function formatContextSummaryText(raw: string | null | undefined): string;
 export declare function estimateTokens(text: string): number;

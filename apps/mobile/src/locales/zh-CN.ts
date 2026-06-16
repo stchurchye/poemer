@@ -402,6 +402,12 @@ export const zh = {
     voiceSaved: '朗读声音已保存',
     voiceEmptyCantonese:
       '未找到粤语声音。请到 iPhone「设置 → 辅助功能 → 朗读内容 → 声音」下载粤语或香港语音后重试。',
+    sendModeTitle: '文字消息发送方式',
+    sendModeHint:
+      '默认会先帮您把问题理一理、确认后再发送。打开「直接发送」后，普通文字问题会直接发出、回答更快；遇到改文章、改字体/声音/语言等仍会先确认。（按住说话不受影响，始终先确认）',
+    sendModeReview: '先确认再发',
+    sendModeDirect: '直接发送',
+    sendModeSaved: '已保存',
   },
   guide: {
     justAsk: '我系要问问题',
@@ -494,6 +500,7 @@ export const zh = {
     close: '关闭',
     percentUsed: (percent: number) => `${percent}% 已用`,
     tokensSummary: (used: string, limit: string) => `约 ${used} / ${limit} Token`,
+    actualUsage: (tokens: string) => `上次发送实际用量：${tokens} Token`,
     ringAccessibility: '查看小助手的记忆',
     ringLongPressAccessibility: '长按打开记忆菜单',
     tokenNearLimit: '记忆接近上限，可取消部分对话，或点「压缩记忆」',

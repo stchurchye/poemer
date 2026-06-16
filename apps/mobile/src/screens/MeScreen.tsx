@@ -23,6 +23,10 @@ import {
   type TtsDialect,
   type TtsVoiceOption,
 } from '../lib/tts';
+import {
+  getStoredSkipIntentReview,
+  setStoredSkipIntentReview,
+} from '../lib/messagePreferences';
 import { AppearancePicker } from '../components/AppearancePicker';
 import { FontSizePresetPicker } from '../components/FontSizePresetPicker';
 import { TabletFrame } from '../components/TabletFrame';
@@ -51,6 +55,7 @@ export function MeScreen() {
   const [dialect, setDialect] = useState<TtsDialect>('mandarin');
   const [voices, setVoices] = useState<TtsVoiceOption[]>([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null);
+  const [skipIntentReview, setSkipIntentReview] = useState(false);
 
   const refreshKeysSummary = useCallback(async () => {
     const [deepseek, zenmux, dashscope] = await Promise.all([
@@ -80,6 +85,7 @@ export function MeScreen() {
 
   useEffect(() => {
     void getStoredDialect().then((d) => loadVoices(d));
+    void getStoredSkipIntentReview().then(setSkipIntentReview);
   }, [loadVoices]);
 
   useFocusEffect(
@@ -100,6 +106,12 @@ export function MeScreen() {
     await setStoredVoiceId(dialect, voiceId);
     setSelectedVoiceId(voiceId);
     appAlert('已保存', zh.me.voiceSaved);
+  };
+
+  const selectSkipIntentReview = async (next: boolean) => {
+    await setStoredSkipIntentReview(next);
+    setSkipIntentReview(next);
+    appAlert('已保存', zh.me.sendModeSaved);
   };
 
   const previewVoice = (voiceId: string) => {
@@ -277,6 +289,51 @@ export function MeScreen() {
           })}
         </View>
 
+        <View style={[styles.card, isTablet && styles.cardBlockTablet]}>
+          <Text style={[styles.section, isTablet && styles.sectionTablet]}>
+            {zh.me.sendModeTitle}
+          </Text>
+          <View style={styles.dialectRow}>
+            <Pressable
+              style={[
+                styles.dialectChip,
+                { minHeight: dialectChipMinHeight },
+                !skipIntentReview && styles.dialectChipActive,
+              ]}
+              onPress={() => void selectSkipIntentReview(false)}
+            >
+              <Text
+                style={[
+                  styles.dialectChipText,
+                  { fontSize: captionFontSize, lineHeight: chipLineHeight },
+                  !skipIntentReview && styles.dialectChipTextActive,
+                ]}
+              >
+                {zh.me.sendModeReview}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[
+                styles.dialectChip,
+                { minHeight: dialectChipMinHeight },
+                skipIntentReview && styles.dialectChipActive,
+              ]}
+              onPress={() => void selectSkipIntentReview(true)}
+            >
+              <Text
+                style={[
+                  styles.dialectChipText,
+                  { fontSize: captionFontSize, lineHeight: chipLineHeight },
+                  skipIntentReview && styles.dialectChipTextActive,
+                ]}
+              >
+                {zh.me.sendModeDirect}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.sendModeHint}>{zh.me.sendModeHint}</Text>
+        </View>
+
         <AppVersionFooter />
       </TabletFrame>
     </ScrollView>
@@ -365,6 +422,12 @@ function createMeScreenStyles(colors: ColorPalette) {
   },
   dialectChipText: { color: colors.textMuted, fontWeight: '600' },
   dialectChipTextActive: { color: colors.text },
+  sendModeHint: {
+    color: colors.textMuted,
+    fontSize: typography.caption,
+    lineHeight: typography.bodyLineHeight,
+    marginTop: 2,
+  },
   voiceSectionTitle: { marginTop: 8 },
   voiceItem: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   voiceRow: {

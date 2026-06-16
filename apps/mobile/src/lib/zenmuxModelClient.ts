@@ -1,5 +1,10 @@
 import type { ModelClient, ModelCompletionInput } from '@shiren/engine';
-import { ZenMuxError, ZENMUX_MODEL_FLASH_LITE, zenmuxCompleteMessages } from '@shiren/shared';
+import {
+  ZenMuxError,
+  ZENMUX_MODEL_FLASH_LITE,
+  zenmuxCompleteMessages,
+  type ModelTokenUsage,
+} from '@shiren/shared';
 import { getZenMuxApiKey } from './zenmuxKey';
 import { LocalModelError } from './localModelClient';
 import { logLlmFailure, logLlmSuccess } from './llmLog';
@@ -40,6 +45,7 @@ export function createZenMuxModelClient(options?: {
       }
       const startedAt = Date.now();
       let status: number | undefined;
+      let usage: ModelTokenUsage | undefined;
       try {
         const text = await zenmuxCompleteMessages({
           apiKey: key,
@@ -50,6 +56,7 @@ export function createZenMuxModelClient(options?: {
           webSearch,
           onMeta: (meta) => {
             status = meta.status;
+            usage = meta.usage;
           },
         });
         logLlmSuccess({
@@ -59,8 +66,9 @@ export function createZenMuxModelClient(options?: {
           status,
           startedAt,
           contentLen: text.length,
+          usage,
         });
-        return { text };
+        return { text, usage };
       } catch (e) {
         if (e instanceof ZenMuxError) {
           logLlmFailure({

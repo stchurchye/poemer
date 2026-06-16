@@ -13,6 +13,7 @@ import { zh } from '../locales/zh-CN';
 import {
   clearLlmLogs,
   formatLlmLogsText,
+  formatUsageLine,
   getLlmLogEntries,
   type LlmLogEntry,
 } from '../lib/llmLog';
@@ -94,6 +95,7 @@ export function LlmLogsScreen() {
         ) : (
           entries.map((e, i) => {
             const tone = statusTone(e);
+            const usageLine = formatUsageLine(e.usage);
             return (
               <View key={`${e.ts}-${i}`} style={styles.entry}>
                 <View style={styles.entryHead}>
@@ -116,6 +118,9 @@ export function LlmLogsScreen() {
                   {e.durationMs != null ? ` · ${e.durationMs}ms` : ''}
                   {e.contentLen != null ? ` · content=${e.contentLen}` : ''}
                 </Text>
+                {usageLine ? (
+                  <Text style={styles.entryMeta}>tokens: {usageLine}</Text>
+                ) : null}
                 {e.reasoningOnly ? (
                   <Text style={styles.entryReasoning}>
                     只有思考内容、正文为空（疑似 thinking，非欠费）

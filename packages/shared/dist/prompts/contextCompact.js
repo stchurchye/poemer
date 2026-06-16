@@ -1,15 +1,19 @@
 import { COMPACT_SUMMARY_MAX_TOKENS, tokensToEstimatedChars, } from '../llm/contextBudget.js';
 const SUMMARY_CHAR_BUDGET = tokensToEstimatedChars(COMPACT_SUMMARY_MAX_TOKENS);
+// token 上限标签：2500 → "2.5k"（避免 Math.round 把 2.5k 误写成 3k，与字数预算自相矛盾）
+const SUMMARY_TOKEN_LABEL = `${(COMPACT_SUMMARY_MAX_TOKENS / 1000)
+    .toFixed(1)
+    .replace(/\.0$/, '')}k`;
 const HISTORY_SUMMARY_MANDARIN = `你是上下文压缩助手。把以下多轮对话压缩成一段摘要，供后续对话继续参考。
 要求：
-- 摘要总篇幅不超过约 ${SUMMARY_CHAR_BUDGET} 个汉字（约 ${Math.round(COMPACT_SUMMARY_MAX_TOKENS / 1000)}k token），口语清楚，能长则尽量保留细节
-- 保留：用户核心诉求、已确认的结论、未解决的问题、重要人名地名与时间线
+- 摘要总篇幅控制在约 ${SUMMARY_CHAR_BUDGET} 个汉字以内（约 ${SUMMARY_TOKEN_LABEL} token），口语清楚，尽量精简、只保留要点
+- 必须保留：用户核心诉求、已确认的结论、未解决的问题、重要人名地名与时间线；其余寒暄与细枝末节可省略
 - 不要编造对话里没有的内容
 - 不要加标题或 markdown，只输出摘要正文`;
 const HISTORY_SUMMARY_CANTONESE = `你是上下文压缩助手。把以下多轮对话压缩成一段摘要，供后续对话继续参考。
 要求：
-- 摘要总篇幅不超过约 ${SUMMARY_CHAR_BUDGET} 字（约 ${Math.round(COMPACT_SUMMARY_MAX_TOKENS / 1000)}k token），能长则尽量保留细节
-- 保留用户核心诉求、已确认结论、未解决问题、重要人名地名
+- 摘要总篇幅控制在约 ${SUMMARY_CHAR_BUDGET} 字以内（约 ${SUMMARY_TOKEN_LABEL} token），尽量精简、只保留要点
+- 必须保留用户核心诉求、已确认结论、未解决问题、重要人名地名；其余寒暄与细枝末节可省略
 - 勿编造
 - 只输出摘要正文`;
 export function historyCompactPromptForDialect(dialect) {
@@ -20,7 +24,7 @@ const DOCUMENT_SUMMARY_MANDARIN = `你是文稿压缩助手。以下是一篇文
 - 每章 1～3 句，章与章之间空一行
 - 标出章节标题
 - 当前待改章节可略详，其它章从简
-- 不编造情节，总篇幅不超过约 ${SUMMARY_CHAR_BUDGET} 个汉字（约 ${Math.round(COMPACT_SUMMARY_MAX_TOKENS / 1000)}k token）
+- 不编造情节，总篇幅不超过约 ${SUMMARY_CHAR_BUDGET} 个汉字（约 ${SUMMARY_TOKEN_LABEL} token）
 - 只输出摘要，不要 markdown`;
 export function documentCompactPromptForDialect(_dialect) {
     return DOCUMENT_SUMMARY_MANDARIN;

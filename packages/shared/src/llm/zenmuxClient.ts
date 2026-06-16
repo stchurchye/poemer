@@ -4,6 +4,7 @@ import {
   ZENMUX_MODEL_CHAT,
   ZENMUX_MODEL_FLASH_LITE,
 } from './zenmux.js';
+import type { ModelTokenUsage } from './tokenUsage.js';
 
 export type ZenMuxChatImage = { imageBase64: string; mimeType?: string };
 
@@ -47,10 +48,10 @@ type ZenMuxChatOptions = {
   /** 是否在回复末尾自动拼接「参考来源」；问问题默认关闭 */
   appendCitations?: boolean;
   /**
-   * 拿到 HTTP 响应后回调，用于诊断日志记录状态码。
+   * 拿到 HTTP 响应后回调，用于诊断日志记录状态码与真实 token 用量。
    * 仅成功路径需要（失败已由 ZenMuxError.status 携带）。
    */
-  onMeta?: (meta: { status: number }) => void;
+  onMeta?: (meta: { status: number; usage?: ModelTokenUsage }) => void;
 };
 
 function buildWebSearchBody(webSearch?: ZenMuxWebSearchOptions): Record<string, unknown> | undefined {
@@ -204,15 +205,35 @@ async function callAnthropicMessagesWithWebSearch(
     throw new ZenMuxError('消息为空');
   }
 
+  // 缓存断点：给「工具 + system」和「最后一个稳定历史轮」打 cache_control，
+  // 最新一条用户输入每次都变、不打。前缀命中由 cache_read_input_tokens 验证。
+  type CacheCtl = { type: 'ephemeral' };
+  type AnthropicTextBlock = { type: 'text'; text: string; cache_control?: CacheCtl };
+  type AnthropicOutMsg = { role: 'user' | 'assistant'; content: string | AnthropicTextBlock[] };
+  const outMessages: AnthropicOutMsg[] = anthropicMessages.map((m) => ({ ...m }));
+  const stableIdx = outMessages.length - 2; // 倒数第二条 = 最后一个已成型的历史轮
+  if (stableIdx >= 0 && typeof outMessages[stableIdx].content === 'string') {
+    outMessages[stableIdx] = {
+      role: outMessages[stableIdx].role,
+      content: [
+        {
+          type: 'text',
+          text: outMessages[stableIdx].content as string,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+    };
+  }
+
   const payload: Record<string, unknown> = {
     model: options.model,
     max_tokens: options.maxTokens ?? 4096,
     temperature: options.temperature ?? 0.5,
-    messages: anthropicMessages,
+    messages: outMessages,
     tools: [buildAnthropicWebSearchTool(options.webSearch)],
   };
   if (system) {
-    payload.system = system;
+    payload.system = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
   }
 
   const res = await fetch(ZENMUX_ANTHROPIC_MESSAGES_URL, {
@@ -227,6 +248,12 @@ async function callAnthropicMessagesWithWebSearch(
 
   const json = (await res.json()) as {
     content?: AnthropicContentBlock[];
+    usage?: {
+      input_tokens?: number;
+      output_tokens?: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
+    };
     error?: { message?: string; type?: string };
   };
 
@@ -237,7 +264,17 @@ async function callAnthropicMessagesWithWebSearch(
     throw new ZenMuxError(msg, res.status);
   }
 
-  options.onMeta?.({ status: res.status });
+  const u = json.usage;
+  // Anthropic 的 input_tokens 是「未命中缓存的余量」，真实输入 = input + cache_read + cache_creation
+  const usage: ModelTokenUsage | undefined = u
+    ? {
+        promptTokens: u.input_tokens,
+        completionTokens: u.output_tokens,
+        cacheHitTokens: u.cache_read_input_tokens,
+        cacheWriteTokens: u.cache_creation_input_tokens,
+      }
+    : undefined;
+  options.onMeta?.({ status: res.status, usage });
   return parseAnthropicResponse(json, options.appendCitations);
 }
 
@@ -302,6 +339,12 @@ async function zenmuxChat(
     choices?: Array<{
       message?: { content?: string; annotations?: UrlCitationAnnotation[] };
     }>;
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+      prompt_tokens_details?: { cached_tokens?: number };
+    };
     error?: { message?: string };
   };
 
@@ -310,7 +353,16 @@ async function zenmuxChat(
     throw new ZenMuxError(msg, res.status);
   }
 
-  options?.onMeta?.({ status: res.status });
+  const u = json.usage;
+  const usage: ModelTokenUsage | undefined = u
+    ? {
+        promptTokens: u.prompt_tokens,
+        completionTokens: u.completion_tokens,
+        totalTokens: u.total_tokens,
+        cacheHitTokens: u.prompt_tokens_details?.cached_tokens,
+      }
+    : undefined;
+  options?.onMeta?.({ status: res.status, usage });
   const message = json.choices?.[0]?.message;
   const raw = message?.content?.trim();
   if (!raw) throw new ZenMuxError('ZenMux 没有返回内容');
@@ -352,6 +404,7 @@ export async function zenmuxChatWithImages(params: {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   images: ZenMuxChatImage[];
   imageNotice: string;
+  onMeta?: (meta: { status: number; usage?: ModelTokenUsage }) => void;
 }): Promise<string> {
   if (params.messages.length === 0) {
     throw new ZenMuxError('消息为空');
@@ -381,6 +434,7 @@ export async function zenmuxChatWithImages(params: {
     model: ZENMUX_MODEL_CHAT,
     maxTokens: 4096,
     temperature: 0.5,
+    onMeta: params.onMeta,
   });
 }
 
@@ -392,7 +446,7 @@ export async function zenmuxCompleteMessages(params: {
   temperature?: number;
   model?: string;
   webSearch?: ZenMuxWebSearchOptions;
-  onMeta?: (meta: { status: number }) => void;
+  onMeta?: (meta: { status: number; usage?: ModelTokenUsage }) => void;
 }): Promise<string> {
   return zenmuxChat(params.apiKey, params.messages, {
     maxTokens: params.maxTokens,

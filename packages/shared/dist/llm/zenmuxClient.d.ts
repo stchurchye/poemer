@@ -1,3 +1,4 @@
+import type { ModelTokenUsage } from './tokenUsage.js';
 export type ZenMuxChatImage = {
     imageBase64: string;
     mimeType?: string;
@@ -29,6 +30,10 @@ export declare function zenmuxChatWithImages(params: {
     }>;
     images: ZenMuxChatImage[];
     imageNotice: string;
+    onMeta?: (meta: {
+        status: number;
+        usage?: ModelTokenUsage;
+    }) => void;
 }): Promise<string>;
 /** 多轮纯文本对话（问问题回答，GPT-5.4） */
 export declare function zenmuxCompleteMessages(params: {
@@ -43,6 +48,7 @@ export declare function zenmuxCompleteMessages(params: {
     webSearch?: ZenMuxWebSearchOptions;
     onMeta?: (meta: {
         status: number;
+        usage?: ModelTokenUsage;
     }) => void;
 }): Promise<string>;
 export declare function verifyZenMuxKey(apiKey: string): Promise<void>;

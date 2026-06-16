@@ -133,15 +133,29 @@ async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
     if (anthropicMessages.length === 0) {
         throw new ZenMuxError('消息为空');
     }
+    const outMessages = anthropicMessages.map((m) => ({ ...m }));
+    const stableIdx = outMessages.length - 2; // 倒数第二条 = 最后一个已成型的历史轮
+    if (stableIdx >= 0 && typeof outMessages[stableIdx].content === 'string') {
+        outMessages[stableIdx] = {
+            role: outMessages[stableIdx].role,
+            content: [
+                {
+                    type: 'text',
+                    text: outMessages[stableIdx].content,
+                    cache_control: { type: 'ephemeral' },
+                },
+            ],
+        };
+    }
     const payload = {
         model: options.model,
         max_tokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.5,
-        messages: anthropicMessages,
+        messages: outMessages,
         tools: [buildAnthropicWebSearchTool(options.webSearch)],
     };
     if (system) {
-        payload.system = system;
+        payload.system = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
     }
     const res = await fetch(ZENMUX_ANTHROPIC_MESSAGES_URL, {
         method: 'POST',
@@ -158,7 +172,17 @@ async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
             `ZenMux Anthropic 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
-    options.onMeta?.({ status: res.status });
+    const u = json.usage;
+    // Anthropic 的 input_tokens 是「未命中缓存的余量」，真实输入 = input + cache_read + cache_creation
+    const usage = u
+        ? {
+            promptTokens: u.input_tokens,
+            completionTokens: u.output_tokens,
+            cacheHitTokens: u.cache_read_input_tokens,
+            cacheWriteTokens: u.cache_creation_input_tokens,
+        }
+        : undefined;
+    options.onMeta?.({ status: res.status, usage });
     return parseAnthropicResponse(json, options.appendCitations);
 }
 function isPlainTextMessages(messages) {
@@ -202,7 +226,16 @@ async function zenmuxChat(apiKey, messages, options) {
         const msg = json.error?.message ?? `ZenMux 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
-    options?.onMeta?.({ status: res.status });
+    const u = json.usage;
+    const usage = u
+        ? {
+            promptTokens: u.prompt_tokens,
+            completionTokens: u.completion_tokens,
+            totalTokens: u.total_tokens,
+            cacheHitTokens: u.prompt_tokens_details?.cached_tokens,
+        }
+        : undefined;
+    options?.onMeta?.({ status: res.status, usage });
     const message = json.choices?.[0]?.message;
     const raw = message?.content?.trim();
     if (!raw)
@@ -256,6 +289,7 @@ export async function zenmuxChatWithImages(params) {
         model: ZENMUX_MODEL_CHAT,
         maxTokens: 4096,
         temperature: 0.5,
+        onMeta: params.onMeta,
     });
 }
 /** 多轮纯文本对话（问问题回答，GPT-5.4） */

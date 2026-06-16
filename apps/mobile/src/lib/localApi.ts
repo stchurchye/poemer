@@ -368,6 +368,7 @@ export function createLocalApi(deps: {
         });
 
         let reply: string;
+        let replyPromptTokens: number | undefined;
         if (images.length > 0) {
           const zenmuxKey = await getZenMuxApiKey();
           if (!zenmuxKey) {
@@ -388,6 +389,9 @@ export function createLocalApi(deps: {
               })),
               images,
               imageNotice: chatImageTurnLlmNotice(images.length),
+              onMeta: (meta) => {
+                replyPromptTokens = meta.usage?.promptTokens;
+              },
             });
           } catch (e) {
             if (e instanceof ZenMuxError) {
@@ -398,7 +402,12 @@ export function createLocalApi(deps: {
             throw e;
           }
         } else {
-          reply = await completeChatMessages(await chatReplyModel(), prepared.messages);
+          // 直接用 model.complete 拿真实 token 用量（completeChatMessages 会丢掉 usage）
+          const completion = await (await chatReplyModel()).complete({
+            messages: prepared.messages,
+          });
+          reply = completion.text.trim();
+          replyPromptTokens = completion.usage?.promptTokens;
         }
 
         const user = store().addChatMessage(sessionId, 'user', storedContent, {
@@ -431,7 +440,10 @@ export function createLocalApi(deps: {
           user,
           assistant,
           session: sessionOut,
-          contextUsage: prepared.usage,
+          contextUsage: {
+            ...prepared.usage,
+            actualPromptTokens: replyPromptTokens,
+          },
         });
       } catch (e) {
         rethrowAsApiError(e);
