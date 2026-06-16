@@ -64,8 +64,11 @@ function KeyInputRow({
       onChangeText={onChangeText}
       autoCapitalize="none"
       autoCorrect={false}
-      secureTextEntry
-      textContentType="password"
+      // 不用 secureTextEntry / textContentType=password：两者都会触发 iOS「自动填充/强密码」浮层，
+      // 挤掉「粘贴」菜单，导致 API key 粘不进来。改成普通文本框，保证可粘贴（填完即验证，明文短暂可见可接受）。
+      textContentType="none"
+      autoComplete="off"
+      importantForAutofill="no"
       onFocus={onFocus}
     />
   );
