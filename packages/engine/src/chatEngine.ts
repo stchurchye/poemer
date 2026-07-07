@@ -1,7 +1,6 @@
-import type { ChatIntentAnalyzeResult, ChatMessage, ChatSession } from '@shiren/shared';
+import type { ChatIntentAnalyzeResult, ChatMessage } from '@shiren/shared';
 import {
   chatIntentPromptForDialect,
-  chatPersonaForDialect,
   chatSessionTitlePromptForDialect,
   formatChatIntentUserPayload,
   isAssistantGuideKey,
@@ -9,13 +8,6 @@ import {
   type ReplyDialect,
 } from '@shiren/shared';
 import type { ModelClient } from './modelClient.js';
-
-export type ChatEngineInput = {
-  session: ChatSession;
-  history: ChatMessage[];
-  userText: string;
-  dialect?: ReplyDialect | null;
-};
 
 function parseChatIntentJson(raw: string): {
   displayText: string;
@@ -110,27 +102,6 @@ export async function completeChatMessages(
   options?: { maxTokens?: number; temperature?: number },
 ): Promise<string> {
   const res = await model.complete({ messages, ...options });
-  return res.text.trim();
-}
-
-export async function generateChatReply(
-  model: ModelClient,
-  input: ChatEngineInput,
-): Promise<string> {
-  const history = input.history.slice(-12).map((m) => ({
-    role: m.role,
-    content: m.content,
-  }));
-  const res = await model.complete({
-    messages: [
-      {
-        role: 'system',
-        content: chatPersonaForDialect(input.dialect),
-      },
-      ...history,
-      { role: 'user', content: input.userText },
-    ],
-  });
   return res.text.trim();
 }
 

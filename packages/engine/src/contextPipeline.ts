@@ -69,7 +69,9 @@ function chatHistoryAfterAnchor(
 ): ChatMessage[] {
   if (!upToMessageId) return messages;
   const idx = messages.findIndex((m) => m.id === upToMessageId);
-  return idx >= 0 ? messages.slice(idx + 1) : messages;
+  // 修 B3：锚点已设但找不到时，视为锚点前内容已被摘要覆盖，回退为空历史，
+  // 绝不回退成「返回全部历史」（那会把已进摘要的内容逐字全量重发、撑爆预算）。
+  return idx >= 0 ? messages.slice(idx + 1) : [];
 }
 
 function toTurns(messages: Array<{ role: string; content: string }>): HistoryTurn[] {
@@ -83,17 +85,51 @@ function writingHistoryAfterAnchor(
   messages: WritingAssistantMessage[],
   upToMessageId: string | null | undefined,
 ): WritingAssistantMessage[] {
-  const filtered = filterWritingMessagesForContext(messages);
-  if (!upToMessageId) return filtered;
-  const idx = filtered.findIndex((m) => m.id === upToMessageId);
-  return idx >= 0 ? filtered.slice(idx + 1) : filtered;
+  // 修 B3：先在「未过滤的原始序列」里定位锚点（锚点可能正是被 filter 剔除的被拒轮，
+  // 若先过滤再找会 idx=-1 → 旧代码回退成全量重发）。定位后再做上下文过滤。
+  let afterAnchor = messages;
+  if (upToMessageId) {
+    const idx = messages.findIndex((m) => m.id === upToMessageId);
+    afterAnchor = idx >= 0 ? messages.slice(idx + 1) : [];
+  }
+  return filterWritingMessagesForContext(afterAnchor);
 }
+
+/** 压缩产物：由 prepareChatContext 决定、但只在模型回复成功后由调用方提交（修 A1） */
+export type PendingContextCommit = {
+  summary: string;
+  upToMessageId: string | null;
+};
 
 export type PreparedChatContext = {
   messages: ChatMessageInput[];
   usage: ContextUsage;
   session: ChatSession;
+  /** 有值表示本轮做了压缩；调用方需在回复+消息成功入库后调用 commitPreparedChatContext */
+  pendingContextCommit?: PendingContextCommit;
 };
+
+/**
+ * 修 A1：把「摘要+锚点落库」从 prepare 阶段挪到回复成功之后。
+ * 调用方在 addChatMessage(user+assistant) 成功后调用此函数一次；失败则永不调用，
+ * store 保持原样、原话可重发，绝不出现「锚点已推进但本轮原话没入库」的不可逆丢失。
+ */
+export function commitPreparedChatContext(
+  store: ContextStoreAdapter,
+  sessionId: string,
+  prepared: { pendingContextCommit?: PendingContextCommit },
+): void {
+  const commit = prepared.pendingContextCommit;
+  if (!commit) return;
+  store.updateChatSessionContext(sessionId, commit.summary, commit.upToMessageId);
+}
+
+/** 预防式压缩：占用达阈值但历史仍装得下时，折叠最老约 1/4 轮（成对，至少 2）来腾空间（修 B2） */
+function preventiveFoldCount(historyLen: number): number {
+  if (historyLen < 2) return 0;
+  const n = Math.max(2, Math.floor(historyLen / 4));
+  return Math.min(n, historyLen);
+}
 
 export async function prepareChatContext(params: {
   store: ContextStoreAdapter;
@@ -102,6 +138,9 @@ export async function prepareChatContext(params: {
   pendingUser: string;
   dialect?: ReplyDialect;
   contextSelection?: ContextSelection;
+  limitTokens?: number;
+  outputReserve?: number;
+  modelId?: string | null;
 }): Promise<PreparedChatContext> {
   const session = params.store.getChatSession(params.sessionId);
   if (!session) throw new Error('SESSION_NOT_FOUND');
@@ -115,45 +154,54 @@ export async function prepareChatContext(params: {
 
   let summary = session.contextSummary ?? null;
   let upToId = session.contextSummaryUpToMessageId ?? null;
+  let didCompact = false;
+
+  const assembleOpts = {
+    limitTokens: params.limitTokens,
+    outputReserve: params.outputReserve,
+    modelId: params.modelId,
+  };
 
   for (let round = 0; round < MAX_COMPACT_ROUNDS; round++) {
-    const historyMsgs = applyContextSelection(
-      chatHistoryAfterAnchor(allMessages, upToId),
-      effectiveSelection,
-    );
-    const history = toTurns(historyMsgs);
+    const rawAfterAnchor = chatHistoryAfterAnchor(allMessages, upToId);
+    const historyMsgs = applyContextSelection(rawAfterAnchor, effectiveSelection);
     const assembled = assembleChatContext({
       systemPrompt,
       summary,
-      history,
+      history: toTurns(historyMsgs),
       pendingUser: params.pendingUser,
+      ...assembleOpts,
     });
 
-    if (!assembled.needsCompact && !shouldCompact(assembled.usage)) {
-      return {
-        messages: assembled.messages as ChatMessageInput[],
-        usage: {
-          ...assembled.usage,
-          compacted: Boolean(summary?.trim()),
-        },
-        session: params.store.getChatSession(params.sessionId)!,
-      };
-    }
+    if (!assembled.needsCompact && !shouldCompact(assembled.usage)) break;
 
-    const omitCount = assembled.messagesToCompact.length;
+    // 决定折叠多少条最老的（已过滤）历史
+    let omitCount = assembled.messagesToCompact.length;
+    if (omitCount === 0) {
+      // 修 B2：达阈值但没溢出 → 预防式折叠最老一小批，而不是一进循环就 break
+      omitCount = preventiveFoldCount(historyMsgs.length);
+    }
     if (omitCount === 0) break;
 
-    const toCompact = historyMsgs.slice(0, omitCount);
-    const merged = await compactHistoryViaLlm({
+    const filteredToFold = historyMsgs.slice(0, omitCount);
+    const lastFoldedId = filteredToFold[filteredToFold.length - 1]?.id;
+    if (!lastFoldedId) break;
+
+    // 修 A2：锚点基于「原始序列」推进——折叠 rawAfterAnchor 中到 lastFoldedId 为止的整段前缀
+    // （含期间任何被 selection 排除的消息），保证锚点绝不越过未进摘要的消息。
+    const rawCut = rawAfterAnchor.findIndex((m) => m.id === lastFoldedId);
+    const rawToFold = rawCut >= 0 ? rawAfterAnchor.slice(0, rawCut + 1) : filteredToFold;
+
+    // 压缩 completion 上限保持安全默认（8192），不按回复模型放大——压缩模型可能是
+    // flash-lite / DeepSeek，其单次输出上限各异；modelId 只用于组装窗口，不传给压缩。
+    summary = await compactHistoryViaLlm({
       model: params.model,
-      messages: toTurns(toCompact),
+      messages: toTurns(rawToFold),
       existingSummary: summary,
       dialect: params.dialect,
     });
-    summary = merged;
-    const lastId = toCompact[toCompact.length - 1]?.id ?? upToId;
-    upToId = lastId;
-    params.store.updateChatSessionContext(params.sessionId, summary, lastId);
+    upToId = rawToFold[rawToFold.length - 1]?.id ?? upToId;
+    didCompact = true;
   }
 
   const historyMsgs = applyContextSelection(
@@ -165,6 +213,7 @@ export async function prepareChatContext(params: {
     summary,
     history: toTurns(historyMsgs),
     pendingUser: params.pendingUser,
+    ...assembleOpts,
   });
 
   return {
@@ -174,6 +223,9 @@ export async function prepareChatContext(params: {
       compacted: Boolean(summary?.trim()),
     },
     session: params.store.getChatSession(params.sessionId)!,
+    pendingContextCommit: didCompact
+      ? { summary: summary ?? '', upToMessageId: upToId }
+      : undefined,
   };
 }
 
@@ -247,14 +299,19 @@ export async function compactChatSession(params: {
     return { confirmation: '当前对话还没有可压缩的历史消息。', usage };
   }
 
-  const turns = toTurns(allMessages);
+  // 修 C-Dedup：只折叠锚点之后、尚未进摘要的消息，不把已并入 existingSummary 的旧消息重压一遍
+  const afterAnchor = chatHistoryAfterAnchor(
+    allMessages,
+    session.contextSummaryUpToMessageId,
+  );
+  const toFold = afterAnchor.length > 0 ? afterAnchor : allMessages;
   const summary = await compactHistoryViaLlm({
     model: params.model,
-    messages: turns,
+    messages: toTurns(toFold),
     existingSummary: session.contextSummary ?? null,
     dialect: params.dialect,
   });
-  const lastId = allMessages[allMessages.length - 1]?.id ?? null;
+  const lastId = toFold[toFold.length - 1]?.id ?? null;
   params.store.updateChatSessionContext(params.sessionId, summary, lastId);
 
   const usage = await previewChatContextUsage({
@@ -510,6 +567,9 @@ export function prepareWritingExecuteContext(params: {
   understandingScope?: 'chapter' | 'document';
   documentExcerpt?: string;
   documentContextSummary?: string | null;
+  limitTokens?: number;
+  outputReserve?: number;
+  modelId?: string | null;
 }): { messages: ChatMessageInput[]; usage: ContextUsage } {
   const actionPrompt = ACTION_PROMPTS[params.action] ?? ACTION_PROMPTS['润色'];
   const isContinue = params.action === '续写';
@@ -534,20 +594,28 @@ ${WRITING_EXECUTE_OUTPUT_RULES}`;
         ? `全篇节选（仅供理解，勿改其它章）：\n${params.documentExcerpt.trim()}`
         : '';
 
-  const userParts = [
+  // 修 C2：把用户指令/风格/范围说明放进 pinned 段（永不被截），只在 trimmable 段（正文/全篇节选）里裁
+  const pinnedParts = [
     params.styleGuide ? `写作风格：${params.styleGuide}` : '',
     params.chapterTitle ? `待改本章：${params.chapterTitle}` : '',
     useFullDoc
       ? '理解范围：可参考下方全篇理解上下文，但输出只能替换待改本章正文。'
       : '理解范围：仅根据待改本章正文理解，不要引用其它章节内容来改写。',
+    params.instruction ? `用户补充：${params.instruction}` : '',
+  ].filter(Boolean);
+
+  const trimmableParts = [
     `待改本章正文：\n${params.oldText || '（空）'}`,
     docPart,
-    params.instruction ? `用户补充：${params.instruction}` : '',
   ].filter(Boolean);
 
   const { messages, usage } = assembleWritingExecuteContext({
     systemPrompt: system,
-    userParts,
+    pinnedParts,
+    trimmableParts,
+    limitTokens: params.limitTokens,
+    outputReserve: params.outputReserve,
+    modelId: params.modelId,
   });
 
   return { messages: messages as ChatMessageInput[], usage };

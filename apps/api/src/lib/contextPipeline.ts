@@ -1,6 +1,8 @@
 import type { ContextSelection, ContextPreview, ContextUsage, ReplyDialect } from '@shiren/shared';
+import { ZENMUX_MODEL_CHAT } from '@shiren/shared';
 import {
   prepareChatContext as enginePrepareChatContext,
+  commitPreparedChatContext as engineCommitPreparedChatContext,
   previewChatContextPreview as enginePreviewChatContextPreview,
   previewChatContextUsage as enginePreviewChatContextUsage,
   compactChatSession as engineCompactChatSession,
@@ -62,7 +64,17 @@ export async function prepareChatContext(params: {
     pendingUser: params.pendingUser,
     dialect: params.dialect,
     contextSelection: params.contextSelection,
+    // 组装窗口按真实回复模型（gpt-5.4，272k）取
+    modelId: ZENMUX_MODEL_CHAT,
   });
+}
+
+/** 修 A1：回复+消息成功入库后再提交压缩摘要+锚点（失败则不提交，原话不丢） */
+export function commitPreparedChatContext(
+  sessionId: string,
+  prepared: PreparedChatContext,
+): void {
+  engineCommitPreparedChatContext(storeAdapter, sessionId, prepared);
 }
 
 export async function previewChatContextPreview(params: {
