@@ -16,6 +16,12 @@ test('estimateTokens: 英文按约 4 字符/token（不过度高估）', () => {
 test('estimateTokens: 空串为 0', () => {
     assert.equal(estimateTokens(''), 0);
 });
+test('estimateTokens: 中文标点（。、《》「」【】—…“”）不被当英文低估', () => {
+    const punct = '。、《》「」『』【】—…“”‘’'.repeat(5);
+    // 同长度纯英文按 0.25/字，中文标点应显著高于它（按 CJK 0.75 计）
+    const en = 'a'.repeat(punct.length);
+    assert.ok(estimateTokens(punct) > estimateTokens(en), '中文标点不应被当英文低估');
+});
 // ---- B4 / R-ModelProfile：窗口按模型 ----
 test('getContextWindowTokens 按模型返回真实窗口，非全局 300k', () => {
     assert.equal(getContextWindowTokens('openai/gpt-5.4'), 272_000);
@@ -61,6 +67,23 @@ test('assembleChatContext: 预算只够部分历史时，逐字历史不以 assi
     if (firstHist) {
         assert.equal(firstHist.role, 'user', '逐字历史应以 user 开头，不能留孤立 assistant');
     }
+});
+test('assembleChatContext: 整段历史装得下且以 assistant 开头时，不误触发压缩', () => {
+    const history = [
+        { role: 'assistant', content: '您好呀' },
+        { role: 'user', content: '今天天气' },
+        { role: 'assistant', content: '挺好的' },
+    ];
+    const r = assembleChatContext({
+        systemPrompt: 's',
+        history,
+        pendingUser: '嗯',
+        limitTokens: 100_000,
+        outputReserve: 1000,
+    });
+    assert.equal(r.needsCompact, false, '装得下就不该压缩');
+    assert.equal(r.messagesToCompact.length, 0, '不应把开头 assistant 误算进待压缩');
+    assert.equal(r.usage.droppedVerbatimTurns, 0);
 });
 // ---- C-Dedup：写作意图 pendingUser 不被双扣 ----
 test('assembleWritingIntentContext: pendingUser 只计一次（历史溢出分支不双扣）', () => {

@@ -304,14 +304,22 @@ export async function compactChatSession(params: {
     allMessages,
     session.contextSummaryUpToMessageId,
   );
-  const toFold = afterAnchor.length > 0 ? afterAnchor : allMessages;
+  // 修 review#6：锚点已到末尾（无新增未摘要消息）时直接短路，不再回退整段重压（否则把已进摘要的旧消息+旧摘要再压一遍，多花钱且摘要膨胀）
+  if (afterAnchor.length === 0) {
+    const usage = await previewChatContextUsage({
+      store: params.store,
+      sessionId: params.sessionId,
+      dialect: params.dialect,
+    });
+    return { confirmation: '对话已整理过，暂无新增可压缩的内容。', usage };
+  }
   const summary = await compactHistoryViaLlm({
     model: params.model,
-    messages: toTurns(toFold),
+    messages: toTurns(afterAnchor),
     existingSummary: session.contextSummary ?? null,
     dialect: params.dialect,
   });
-  const lastId = toFold[toFold.length - 1]?.id ?? null;
+  const lastId = afterAnchor[afterAnchor.length - 1]?.id ?? null;
   params.store.updateChatSessionContext(params.sessionId, summary, lastId);
 
   const usage = await previewChatContextUsage({
@@ -325,11 +333,34 @@ export async function compactChatSession(params: {
   };
 }
 
+/** 写作侧压缩产物：与问答侧 A1 同理，只在回复+消息成功入库后由调用方提交 */
+export type PendingWritingContextCommit = {
+  writingContextSummary?: string | null;
+  writingContextSummaryUpToMessageId?: string | null;
+  documentContextSummary?: string | null;
+};
+
 export type PreparedWritingIntentContext = {
   messages: ChatMessageInput[];
   usage: ContextUsage;
   document: Document;
+  /** 有值表示本轮做了压缩；调用方在写作消息成功入库后调用 commitPreparedWritingContext */
+  pendingWritingContextCommit?: PendingWritingContextCommit;
 };
+
+/**
+ * 修 review#1：写作侧与问答侧 A1 对齐——把「文档摘要+锚点落库」推迟到回复成功之后。
+ * 未提交时什么都不持久化：锚点不推进、原话不折进有损摘要，弱网失败下写作助手不会「突然失忆」。
+ */
+export function commitPreparedWritingContext(
+  store: ContextStoreAdapter,
+  documentId: string,
+  prepared: { pendingWritingContextCommit?: PendingWritingContextCommit },
+): void {
+  const commit = prepared.pendingWritingContextCommit;
+  if (!commit) return;
+  store.updateDocumentContextFields(documentId, commit);
+}
 
 type PrepareWritingSidebarContextParams = {
   store: ContextStoreAdapter;
@@ -344,6 +375,9 @@ type PrepareWritingSidebarContextParams = {
   contextSelection?: ContextSelection;
   systemPrompt?: string;
   referenceScope?: 'chapter' | 'document';
+  limitTokens?: number;
+  outputReserve?: number;
+  modelId?: string | null;
 };
 
 async function prepareWritingSidebarContext(
@@ -358,9 +392,16 @@ async function prepareWritingSidebarContext(
   let summary = params.document.writingContextSummary ?? null;
   let upToId = params.document.writingContextSummaryUpToMessageId ?? null;
   let doc = params.document;
+  let pending: PendingWritingContextCommit | null = null;
   let documentBlock =
     params.referenceScope === 'chapter' ? '' : params.documentBlock;
   let chapterBlock = params.chapterBlock;
+
+  const assembleOpts = {
+    limitTokens: params.limitTokens,
+    outputReserve: params.outputReserve,
+    modelId: params.modelId,
+  };
 
   const draftPreview = blocksFromWritingIntent(
     assembleWritingIntentContext({
@@ -370,6 +411,7 @@ async function prepareWritingSidebarContext(
       chapterBlock,
       documentBlock,
       userMessage: params.userMessage,
+      ...assembleOpts,
     }),
     { chapterBlock, documentBlock },
   );
@@ -390,6 +432,7 @@ async function prepareWritingSidebarContext(
       chapterBlock,
       documentBlock,
       userMessage: params.userMessage,
+      ...assembleOpts,
     });
 
     if (!assembled.needsCompact && !shouldCompact(assembled.usage)) {
@@ -401,6 +444,7 @@ async function prepareWritingSidebarContext(
             Boolean(summary?.trim()) || Boolean(doc.documentContextSummary?.trim()),
         },
         document: doc,
+        pendingWritingContextCommit: pending ?? undefined,
       };
     }
 
@@ -415,21 +459,25 @@ async function prepareWritingSidebarContext(
       });
       const lastId = toCompact[toCompact.length - 1]?.id ?? upToId;
       upToId = lastId;
-      doc =
-        params.store.updateDocumentContextFields(params.documentId, {
-          writingContextSummary: summary,
-          writingContextSummaryUpToMessageId: lastId,
-        }) ?? doc;
+      // 修 review#1：不再 prepare 阶段落库，累积到 pending，回复成功后由调用方提交；本地同步更新 doc 供后续使用
+      pending = {
+        ...(pending ?? {}),
+        writingContextSummary: summary,
+        writingContextSummaryUpToMessageId: lastId,
+      };
+      doc = {
+        ...doc,
+        writingContextSummary: summary,
+        writingContextSummaryUpToMessageId: lastId,
+      };
     } else if (documentBlock.length > 6000 && !doc.documentContextSummary?.trim()) {
       const compactDoc = await compactDocumentExcerptViaLlm({
         model: params.model,
         documentExcerpt: documentBlock,
         dialect: params.dialect,
       });
-      doc =
-        params.store.updateDocumentContextFields(params.documentId, {
-          documentContextSummary: compactDoc,
-        }) ?? doc;
+      pending = { ...(pending ?? {}), documentContextSummary: compactDoc };
+      doc = { ...doc, documentContextSummary: compactDoc };
       documentBlock = `全篇摘要（供理解，勿改其它章）：\n${compactDoc}`;
     } else {
       break;
@@ -454,6 +502,7 @@ async function prepareWritingSidebarContext(
     chapterBlock,
     documentBlock: docBlock,
     userMessage: params.userMessage,
+    ...assembleOpts,
   });
 
   return {
@@ -466,6 +515,7 @@ async function prepareWritingSidebarContext(
         assembled.needsCompact,
     },
     document: doc,
+    pendingWritingContextCommit: pending ?? undefined,
   };
 }
 

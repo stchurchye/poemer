@@ -16,6 +16,7 @@ import {
 } from '@shiren/shared';
 import { completeWritingExecuteRaw } from '../lib/writingExecuteCompletion.js';
 import {
+  commitPreparedWritingContext,
   prepareWritingExecuteContext,
   prepareWritingIntentContext,
   prepareWritingChatContext,
@@ -556,6 +557,8 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
       content: chatReply.trim(),
       kind: 'chat',
     })!;
+    // 修 review#1：回复+消息成功入库后才提交写作侧压缩产物
+    commitPreparedWritingContext(documentId, chatPrepared);
     return c.json({
       ok: true,
       data: {
@@ -704,6 +707,8 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
   }
 
   const { userMsg, assistantMsg } = persistChatExchange(chatReply);
+  // 修 review#1：回复+消息成功入库后才提交写作侧压缩产物
+  commitPreparedWritingContext(documentId, chatPrepared);
   return c.json({
     ok: true,
     data: {
