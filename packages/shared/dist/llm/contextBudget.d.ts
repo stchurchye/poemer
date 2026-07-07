@@ -33,8 +33,13 @@ export type ContextUsage = {
  */
 export declare const DEFAULT_CONTEXT_WINDOW_TOKENS = 272000;
 export declare const DEFAULT_OUTPUT_RESERVE_TOKENS = 8000;
-/** LLM 压缩后的摘要/全篇摘要写入上下文时的裁剪上限（有界，非 completion 上限） */
-export declare const COMPACT_SUMMARY_MAX_TOKENS = 8000;
+/**
+ * LLM 压缩后摘要写入上下文时的裁剪上限（有界）。
+ * 必须让「提示词邀请的摘要长度」折算成的输出 token 稳稳小于 completion 上限，
+ * 否则模型会写超、被上游按 completion maxTokens 静默截断丢尾部。
+ * 4000 tok 摘要 ≈ 6400 字，中文输出约 4800 token < 8192 completion 兜底上限。
+ */
+export declare const COMPACT_SUMMARY_MAX_TOKENS = 4000;
 /** 压缩 completion 的默认 maxTokens（会再被模型真实输出上限 clamp）。用户偏好取高一点。 */
 export declare const DEFAULT_COMPACT_COMPLETION_MAX_TOKENS = 16384;
 export declare const COMPACT_THRESHOLD_RATIO = 0.9;
@@ -135,6 +140,11 @@ export declare function assembleWritingExecuteContext(params: {
  * 与语言感知的 estimateTokens 一致（二分找最长前缀），中文也不会因固定系数而超预算。
  */
 export declare function trimTextToTokenBudget(text: string, maxTokens: number): string;
+/**
+ * 按 token 预算裁剪，但保留文本【末尾】（续写场景需要「从哪接着写」的尾部而非开头）。
+ * 结果（含「（前文略）」提示）严格 <= maxTokens。
+ */
+export declare function trimTextToTokenBudgetTail(text: string, maxTokens: number): string;
 export declare function shouldCompact(usage: ContextUsage): boolean;
 export {};
 //# sourceMappingURL=contextBudget.d.ts.map

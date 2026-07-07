@@ -3,6 +3,7 @@ import { ZENMUX_MODEL_CHAT } from '@shiren/shared';
 import {
   prepareChatContext as enginePrepareChatContext,
   commitPreparedChatContext as engineCommitPreparedChatContext,
+  commitPreparedWritingContext as engineCommitPreparedWritingContext,
   previewChatContextPreview as enginePreviewChatContextPreview,
   previewChatContextUsage as enginePreviewChatContextUsage,
   compactChatSession as engineCompactChatSession,
@@ -134,6 +135,14 @@ export async function prepareWritingChatContext(
     model: modelFromApiKey(apiKey),
     ...rest,
   });
+}
+
+/** 修 review#1：写作侧压缩产物在写作消息成功入库后提交 */
+export function commitPreparedWritingContext(
+  documentId: string,
+  prepared: PreparedWritingIntentContext,
+): void {
+  engineCommitPreparedWritingContext(storeAdapter, documentId, prepared);
 }
 
 export async function previewWritingIntentContextPreview(

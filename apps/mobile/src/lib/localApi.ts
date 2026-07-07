@@ -14,6 +14,7 @@ import {
   analyzeChatIntentLocal,
   analyzeWritingIntentLocal,
   commitPreparedChatContext,
+  commitPreparedWritingContext,
   compactChatSession as compactChatSessionEngine,
   completeChatMessages,
   prepareChatContext,
@@ -581,6 +582,8 @@ export function createLocalApi(deps: {
           });
           const chatReply = await completeChatMessages(writingM, prepared.messages);
           const { user, assistant } = persistChatExchange(chatReply);
+          // 修 review#1：回复+消息成功入库后才提交写作侧压缩产物
+          commitPreparedWritingContext(contextStoreAdapter(), documentId, prepared);
           return okWritingIntent(
             {
               mode: 'chat',
@@ -713,6 +716,8 @@ export function createLocalApi(deps: {
         });
         const chatReply = await completeChatMessages(writingM, prepared.messages);
         const { user, assistant } = persistChatExchange(chatReply);
+        // 修 review#1：回复+消息成功入库后才提交写作侧压缩产物
+        commitPreparedWritingContext(contextStoreAdapter(), documentId, prepared);
         return okWritingIntent(
           {
             ...base,

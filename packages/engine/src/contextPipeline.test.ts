@@ -3,11 +3,18 @@ import assert from 'node:assert/strict';
 import {
   prepareChatContext,
   commitPreparedChatContext,
+  commitPreparedWritingContext,
+  prepareWritingIntentContext,
   prepareWritingExecuteContext,
 } from './contextPipeline.js';
 import type { ContextStoreAdapter } from './contextStore.js';
 import type { ModelClient } from './modelClient.js';
-import type { ChatMessage, ChatSession } from '@shiren/shared';
+import type {
+  ChatMessage,
+  ChatSession,
+  Document,
+  WritingAssistantMessage,
+} from '@shiren/shared';
 
 function makeStore(session: ChatSession, messages: ChatMessage[]) {
   let stored = { ...session };
@@ -116,6 +123,67 @@ test('prepareChatContext: 高占用但未溢出时仍预防式压缩（不再一
   });
   // 只要压缩发生（有摘要产物）即说明预防式压缩生效
   assert.ok(prepared.pendingContextCommit, '高占用应触发预防式压缩');
+});
+
+// ---- review#1：写作侧压缩也延迟提交，prepare 阶段不落库 ----
+
+test('prepareWritingIntentContext: 触发压缩时不写 store，commit 后才写一次', async () => {
+  const doc: Document = {
+    id: 'd1',
+    title: '回忆录',
+    chapters: [{ id: 'c1', title: '第一章', order: 0, blocks: [{ id: 'b1', content: '正文' }] }],
+    globalSummary: '',
+    styleGuide: '',
+    currentRevisionId: null,
+    revisionCount: 0,
+    updatedAt: '0',
+    createdAt: '0',
+    writingContextSummary: null,
+    writingContextSummaryUpToMessageId: null,
+  } as Document;
+
+  const msgs: WritingAssistantMessage[] = [];
+  for (let i = 0; i < 30; i++) {
+    msgs.push({
+      id: `w${i}`,
+      documentId: 'd1',
+      role: i % 2 === 0 ? 'user' : 'assistant',
+      content: '写作侧栏很长的对话'.repeat(300),
+      kind: 'chat',
+      createdAt: String(i),
+    });
+  }
+
+  const updates: unknown[] = [];
+  const store: ContextStoreAdapter = {
+    getChatSession: () => undefined,
+    getChatMessages: () => [],
+    updateChatSessionContext: () => undefined,
+    getDocument: () => doc,
+    getWritingAssistantMessages: () => msgs,
+    updateDocumentContextFields: (_id, fields) => {
+      updates.push(fields);
+      return doc;
+    },
+  };
+
+  const prepared = await prepareWritingIntentContext({
+    store,
+    model: compactModel,
+    documentId: 'd1',
+    document: doc,
+    allMessages: msgs,
+    chapterBlock: '当前章',
+    documentBlock: '全篇',
+    userMessage: '帮我看看',
+    limitTokens: 4000,
+  } as Parameters<typeof prepareWritingIntentContext>[0]);
+
+  assert.equal(updates.length, 0, 'prepare 阶段绝不能写 store');
+  assert.ok(prepared.pendingWritingContextCommit, '应返回写作侧待提交产物');
+
+  commitPreparedWritingContext(store, 'd1', prepared);
+  assert.equal(updates.length, 1, '提交时才写一次');
 });
 
 // ---- C2：改稿执行把用户指令放进 pinned 段，正文超长也不丢 ----

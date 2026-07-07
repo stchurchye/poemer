@@ -49,8 +49,13 @@ export type ContextUsage = {
  */
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 272_000;
 export const DEFAULT_OUTPUT_RESERVE_TOKENS = 8_000;
-/** LLM 压缩后的摘要/全篇摘要写入上下文时的裁剪上限（有界，非 completion 上限） */
-export const COMPACT_SUMMARY_MAX_TOKENS = 8_000;
+/**
+ * LLM 压缩后摘要写入上下文时的裁剪上限（有界）。
+ * 必须让「提示词邀请的摘要长度」折算成的输出 token 稳稳小于 completion 上限，
+ * 否则模型会写超、被上游按 completion maxTokens 静默截断丢尾部。
+ * 4000 tok 摘要 ≈ 6400 字，中文输出约 4800 token < 8192 completion 兜底上限。
+ */
+export const COMPACT_SUMMARY_MAX_TOKENS = 4_000;
 /** 压缩 completion 的默认 maxTokens（会再被模型真实输出上限 clamp）。用户偏好取高一点。 */
 export const DEFAULT_COMPACT_COMPLETION_MAX_TOKENS = 16_384;
 export const COMPACT_THRESHOLD_RATIO = 0.9;
@@ -104,13 +109,15 @@ export function formatContextSummaryText(raw: string | null | undefined): string
   return `${SUMMARY_PREFIX}${body}`;
 }
 
-/** CJK（含中日韩统一表意、假名、谚文、全角标点）判定，用于分语言估算 */
+/** CJK（含中日韩统一表意、假名、谚文、常用中文标点）判定，用于分语言估算 */
 function isCjkCharCode(code: number): boolean {
   return (
-    (code >= 0x3400 && code <= 0x9fff) || // CJK 统一表意 + 扩展A
-    (code >= 0xf900 && code <= 0xfaff) || // 兼容表意
+    (code >= 0x2010 && code <= 0x2027) || // 破折号/弯引号/省略号等常用标点（—…“”‘’）
+    (code >= 0x3000 && code <= 0x303f) || // CJK 符号与标点（。、《》「」『』【】等）
     (code >= 0x3040 && code <= 0x30ff) || // 平/片假名
+    (code >= 0x3400 && code <= 0x9fff) || // CJK 统一表意 + 扩展A（含基本汉字 4E00–9FFF）
     (code >= 0xac00 && code <= 0xd7af) || // 谚文
+    (code >= 0xf900 && code <= 0xfaff) || // 兼容表意
     (code >= 0xff00 && code <= 0xffef) // 全角字符/标点
   );
 }
@@ -203,18 +210,23 @@ function fitHistoryFromEnd(
   }
   let cut = history.length; // fitted = history.slice(cut)
   let used = 0;
+  let truncated = false; // 是否因预算裁掉了更早的轮次
   for (let i = history.length - 1; i >= 0; i--) {
     const cost = estimateTokens(history[i].content);
-    if (used + cost > budgetTokens && cut < history.length) break;
     if (used + cost > budgetTokens) {
+      if (cut < history.length) {
+        truncated = true;
+        break;
+      }
       // 单条就超预算：一条都放不下
       return { fitted: [], omitted: [...history], used: 0 };
     }
     used += cost;
     cut = i;
   }
-  // C-Dedup：逐字历史不以孤立 assistant 开头，成对丢弃避免拆散 user/assistant
-  if (cut < history.length && history[cut].role === 'assistant') {
+  // C-Dedup：仅当确实发生裁切时，才避免逐字历史以孤立 assistant 开头（成对丢弃）；
+  // 整段历史本可完整装下时不动，否则会把开头的 assistant 误算进 omitted → 误触发压缩。
+  if (truncated && cut < history.length && history[cut].role === 'assistant') {
     used -= estimateTokens(history[cut].content);
     cut += 1;
   }
@@ -491,6 +503,35 @@ export function trimTextToTokenBudget(text: string, maxTokens: number): string {
     else hi = mid - 1;
   }
   return `${text.slice(0, lo)}${TRIM_NOTE}`;
+}
+
+/**
+ * 按 token 预算裁剪，但保留文本【末尾】（续写场景需要「从哪接着写」的尾部而非开头）。
+ * 结果（含「（前文略）」提示）严格 <= maxTokens。
+ */
+export function trimTextToTokenBudgetTail(text: string, maxTokens: number): string {
+  if (maxTokens <= 0) return '';
+  if (estimateTokens(text) <= maxTokens) return text;
+  const note = '（前文略）\n';
+  const budgetForBody = maxTokens - estimateTokens(note);
+  if (budgetForBody <= 0) {
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (estimateTokens(text.slice(mid)) <= maxTokens) hi = mid;
+      else lo = mid + 1;
+    }
+    return text.slice(lo);
+  }
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2); // 起始下标：越小保留越多尾部
+    if (estimateTokens(text.slice(mid)) <= budgetForBody) hi = mid;
+    else lo = mid + 1;
+  }
+  return `${note}${text.slice(lo)}`;
 }
 
 export function shouldCompact(usage: ContextUsage): boolean {
