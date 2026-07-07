@@ -13,6 +13,7 @@ import type { LocalStore } from '@shiren/shared';
 import {
   analyzeChatIntentLocal,
   analyzeWritingIntentLocal,
+  commitPreparedChatContext,
   compactChatSession as compactChatSessionEngine,
   completeChatMessages,
   prepareChatContext,
@@ -365,6 +366,8 @@ export function createLocalApi(deps: {
           pendingUser: pendingForContext,
           dialect,
           contextSelection: body.contextSelection,
+          // 组装窗口按真实回复模型（gpt-5.4，272k）取；未接则回退保守默认
+          modelId: ZENMUX_MODEL_CHAT,
         });
 
         let reply: string;
@@ -407,6 +410,9 @@ export function createLocalApi(deps: {
         if (!user) notFound('CHAT_SESSION_NOT_FOUND');
         const assistant = store().addChatMessage(sessionId, 'assistant', reply);
         if (!assistant) notFound('CHAT_SESSION_NOT_FOUND');
+
+        // 修 A1：回复+两条消息成功入库后，才提交压缩摘要+锚点（失败则不提交，原话不丢）
+        commitPreparedChatContext(ctxStore, sessionId, prepared);
 
         let sessionOut = prepared.session;
         try {

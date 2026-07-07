@@ -10,6 +10,21 @@ export function contextSelectionWithServerMarks(_allMessages, contextSelection) 
 function blockId(prefix, index) {
     return `${prefix}-${index}`;
 }
+/** 组装结果里真正 fitted 的逐字历史条数（排除 system / 摘要 / 末条 pendingUser） */
+function countFittedHistory(messages) {
+    let count = 0;
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.role === 'system')
+            continue;
+        if (msg.role === 'user' && msg.content.startsWith(SUMMARY_PREFIX))
+            continue;
+        if (i === messages.length - 1)
+            continue; // pendingUser
+        count += 1;
+    }
+    return count;
+}
 export function formatMessagesAsMarkdown(messages) {
     return messages
         .map((m) => {
@@ -91,6 +106,9 @@ export function blocksFromAssembleChatResult(assembled, opts) {
             selectedByDefault: true,
         });
     }
+    // 修 C-Preview：fitted 历史是 historyMessageIds 的尾部；按偏移对齐，而非从 0 顺序取
+    const fittedHistoryCount = countFittedHistory(assembled.messages);
+    const idOffset = Math.max(0, (opts?.historyMessageIds?.length ?? 0) - fittedHistoryCount);
     let historyIdx = 0;
     for (const msg of assembled.messages) {
         if (msg.role === 'system')
@@ -99,7 +117,7 @@ export function blocksFromAssembleChatResult(assembled, opts) {
             continue;
         if (msg === assembled.messages[assembled.messages.length - 1])
             continue;
-        const messageId = opts?.historyMessageIds?.[historyIdx];
+        const messageId = opts?.historyMessageIds?.[idOffset + historyIdx];
         const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
         blocks.push({
             id: blockId('history', idx++),
@@ -214,6 +232,8 @@ export function blocksFromWritingIntent(assembled, opts) {
             selectedByDefault: useBlockExclusion ? !excludedBlock.has(documentId) : true,
         });
     }
+    const fittedHistoryCount = countFittedHistory(assembled.messages);
+    const idOffset = Math.max(0, (opts.historyMessageIds?.length ?? 0) - fittedHistoryCount);
     let historyIdx = 0;
     for (const msg of assembled.messages) {
         if (msg.role === 'system')
@@ -223,7 +243,7 @@ export function blocksFromWritingIntent(assembled, opts) {
         if (msg === assembled.messages[assembled.messages.length - 1])
             continue;
         const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
-        const messageId = opts.historyMessageIds?.[historyIdx];
+        const messageId = opts.historyMessageIds?.[idOffset + historyIdx];
         blocks.push({
             id: blockId('whist', idx++),
             kind,

@@ -1,4 +1,5 @@
 /** 上下文 token 预算与组装（问答 / 写作小助手共用） */
+import { getModelProfile } from './modelProfile.js';
 /** 上下文分类展示顺序与配色（弹窗图例 / 分段条） */
 export const CONTEXT_BREAKDOWN_META = [
     { key: 'system', labelZh: '系统提示词', color: '#9CA3AF' },
@@ -8,27 +9,50 @@ export const CONTEXT_BREAKDOWN_META = [
     { key: 'pendingUser', labelZh: '待发送', color: '#FBBF24' },
     { key: 'outputReserve', labelZh: '输出预留', color: '#6B7280' },
 ];
-export const DEFAULT_CONTEXT_WINDOW_TOKENS = 300_000;
+/**
+ * 兜底窗口：仅当无法解析模型 profile 时使用。真实窗口按模型走 getModelProfile()。
+ * 取保守值（不再是乐观的 300k），避免未知模型下乐观放行导致上游超限。
+ */
+export const DEFAULT_CONTEXT_WINDOW_TOKENS = 272_000;
 export const DEFAULT_OUTPUT_RESERVE_TOKENS = 8_000;
-/** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限 */
-export const COMPACT_SUMMARY_MAX_TOKENS = 100_000;
-export const COMPACT_THRESHOLD_RATIO = 0.8;
+/** LLM 压缩后的摘要/全篇摘要写入上下文时的裁剪上限（有界，非 completion 上限） */
+export const COMPACT_SUMMARY_MAX_TOKENS = 8_000;
+/** 压缩 completion 的默认 maxTokens（会再被模型真实输出上限 clamp）。用户偏好取高一点。 */
+export const DEFAULT_COMPACT_COMPLETION_MAX_TOKENS = 16_384;
+export const COMPACT_THRESHOLD_RATIO = 0.9;
+/** 兼容旧逻辑的字符换算系数（tokensToEstimatedChars / 展示用）；真实计量见 estimateTokens */
 export const ESTIMATE_CHARS_PER_TOKEN = 1.6;
+/** 语言感知计量：CJK 每字约 0.75 token（比旧 0.625 保守）；其它字符约 0.25 token（≈4 字符/token） */
+export const CJK_TOKENS_PER_CHAR = 0.75;
+export const OTHER_TOKENS_PER_CHAR = 0.25;
 export const SUMMARY_PREFIX = '【此前对话摘要】\n';
-export function getContextWindowTokens() {
-    const raw = typeof process !== 'undefined' ? process.env.CONTEXT_WINDOW_TOKENS : undefined;
-    const n = raw ? Number.parseInt(raw, 10) : DEFAULT_CONTEXT_WINDOW_TOKENS;
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_CONTEXT_WINDOW_TOKENS;
+const TRIM_NOTE = '\n…（下文已按上下文预算压缩）';
+function envInt(name) {
+    const raw = typeof process !== 'undefined' ? process.env?.[name] : undefined;
+    if (!raw)
+        return undefined;
+    const n = Number.parseInt(raw, 10);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+/** 上下文窗口：按模型真实窗口；env 覆盖仅作运维口子（RN 无 process.env 时自然走 profile） */
+export function getContextWindowTokens(modelId) {
+    return envInt('CONTEXT_WINDOW_TOKENS') ?? getModelProfile(modelId).contextWindowTokens;
 }
 export function getOutputReserveTokens() {
-    const raw = typeof process !== 'undefined' ? process.env.OUTPUT_RESERVE_TOKENS : undefined;
-    const n = raw ? Number.parseInt(raw, 10) : DEFAULT_OUTPUT_RESERVE_TOKENS;
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_OUTPUT_RESERVE_TOKENS;
+    return envInt('OUTPUT_RESERVE_TOKENS') ?? DEFAULT_OUTPUT_RESERVE_TOKENS;
 }
+/** 摘要写入上下文时的裁剪上限（字数上限），与 completion maxTokens 是两个独立量 */
 export function getCompactSummaryMaxTokens() {
-    const raw = typeof process !== 'undefined' ? process.env.COMPACT_SUMMARY_MAX_TOKENS : undefined;
-    const n = raw ? Number.parseInt(raw, 10) : COMPACT_SUMMARY_MAX_TOKENS;
-    return Number.isFinite(n) && n > 0 ? n : COMPACT_SUMMARY_MAX_TOKENS;
+    return envInt('COMPACT_SUMMARY_MAX_TOKENS') ?? COMPACT_SUMMARY_MAX_TOKENS;
+}
+/**
+ * 压缩调用（model.complete）的 maxTokens：受模型真实单次输出上限约束。
+ * 修 B1：绝不把 getCompactSummaryMaxTokens()（大值）当作 completion maxTokens 透传给上游。
+ */
+export function getCompactCompletionMaxTokens(modelId) {
+    const configured = envInt('COMPACT_COMPLETION_MAX_TOKENS') ?? DEFAULT_COMPACT_COMPLETION_MAX_TOKENS;
+    const modelCap = getModelProfile(modelId).maxCompletionTokens;
+    return Math.min(configured, modelCap);
 }
 /** 将摘要正文裁到 COMPACT_SUMMARY_MAX_TOKENS，再包上前缀 */
 export function formatContextSummaryText(raw) {
@@ -38,10 +62,31 @@ export function formatContextSummaryText(raw) {
     const body = trimTextToTokenBudget(trimmed, getCompactSummaryMaxTokens());
     return `${SUMMARY_PREFIX}${body}`;
 }
+/** CJK（含中日韩统一表意、假名、谚文、全角标点）判定，用于分语言估算 */
+function isCjkCharCode(code) {
+    return ((code >= 0x3400 && code <= 0x9fff) || // CJK 统一表意 + 扩展A
+        (code >= 0xf900 && code <= 0xfaff) || // 兼容表意
+        (code >= 0x3040 && code <= 0x30ff) || // 平/片假名
+        (code >= 0xac00 && code <= 0xd7af) || // 谚文
+        (code >= 0xff00 && code <= 0xffef) // 全角字符/标点
+    );
+}
+/**
+ * 语言感知 token 估算（修 B4）：中文按 ~0.75 token/字（比旧 chars/1.6=0.625 保守，防静默溢出），
+ * 其它字符按 ~0.25 token/字。整套预算/触发/裁切都建于此。
+ */
 export function estimateTokens(text) {
     if (!text)
         return 0;
-    return Math.ceil(text.length / ESTIMATE_CHARS_PER_TOKEN);
+    let cjk = 0;
+    let other = 0;
+    for (let i = 0; i < text.length; i++) {
+        if (isCjkCharCode(text.charCodeAt(i)))
+            cjk++;
+        else
+            other++;
+    }
+    return Math.ceil(cjk * CJK_TOKENS_PER_CHAR + other * OTHER_TOKENS_PER_CHAR);
 }
 export function formatTokenCount(n) {
     if (n >= 1000) {
@@ -98,25 +143,29 @@ function fitHistoryFromEnd(history, budgetTokens) {
     if (budgetTokens <= 0 || history.length === 0) {
         return { fitted: [], omitted: [...history], used: 0 };
     }
-    const fittedRev = [];
+    let cut = history.length; // fitted = history.slice(cut)
     let used = 0;
     for (let i = history.length - 1; i >= 0; i--) {
-        const turn = history[i];
-        const cost = estimateTokens(turn.content);
-        if (used + cost > budgetTokens && fittedRev.length > 0) {
-            return {
-                fitted: fittedRev.reverse(),
-                omitted: history.slice(0, i + 1),
-                used,
-            };
-        }
+        const cost = estimateTokens(history[i].content);
+        if (used + cost > budgetTokens && cut < history.length)
+            break;
         if (used + cost > budgetTokens) {
+            // 单条就超预算：一条都放不下
             return { fitted: [], omitted: [...history], used: 0 };
         }
-        fittedRev.push(turn);
         used += cost;
+        cut = i;
     }
-    return { fitted: fittedRev.reverse(), omitted: [], used };
+    // C-Dedup：逐字历史不以孤立 assistant 开头，成对丢弃避免拆散 user/assistant
+    if (cut < history.length && history[cut].role === 'assistant') {
+        used -= estimateTokens(history[cut].content);
+        cut += 1;
+    }
+    return {
+        fitted: history.slice(cut),
+        omitted: history.slice(0, cut),
+        used,
+    };
 }
 function buildUsage(limitTokens, breakdown, compacted, droppedVerbatimTurns) {
     const usedTokens = breakdown.system +
@@ -135,7 +184,7 @@ function buildUsage(limitTokens, breakdown, compacted, droppedVerbatimTurns) {
     };
 }
 export function assembleChatContext(params) {
-    const limitTokens = params.limitTokens ?? getContextWindowTokens();
+    const limitTokens = params.limitTokens ?? getContextWindowTokens(params.modelId);
     const outputReserve = params.outputReserve ?? getOutputReserveTokens();
     const breakdown = {
         system: estimateTokens(params.systemPrompt),
@@ -172,7 +221,7 @@ export function assembleChatContext(params) {
     };
 }
 export function assembleWritingIntentContext(params) {
-    const limitTokens = params.limitTokens ?? getContextWindowTokens();
+    const limitTokens = params.limitTokens ?? getContextWindowTokens(params.modelId);
     const outputReserve = params.outputReserve ?? getOutputReserveTokens();
     const breakdown = {
         system: estimateTokens(params.systemPrompt),
@@ -192,19 +241,15 @@ export function assembleWritingIntentContext(params) {
     let historyBudget = Math.max(0, limitTokens - fixedWithoutDoc - breakdown.document);
     let { fitted, omitted, used } = fitHistoryFromEnd(params.history, historyBudget);
     if (omitted.length > 0 && params.documentBlock) {
-        const docBudget = Math.max(600, limitTokens -
-            fixedWithoutDoc -
-            used -
-            estimateTokens(params.chapterBlock) -
-            breakdown.pendingUser -
-            500);
+        // fixedWithoutDoc 已含 pendingUser，这里不再单独扣（修 C-Dedup：pendingUser 只计一次）
+        const docBudget = Math.max(600, limitTokens - fixedWithoutDoc - used - estimateTokens(params.chapterBlock) - 500);
         const prefix = '全篇文章节选（供理解意图；实际改稿仍只改上面这一章）：\n';
         documentBlockForModel = params.documentBlock.startsWith('全篇')
             ? trimTextToTokenBudget(params.documentBlock, docBudget)
             : trimTextToTokenBudget(`${prefix}${params.documentBlock}`, docBudget);
         breakdown.document =
             estimateTokens(params.chapterBlock) + estimateTokens(documentBlockForModel);
-        historyBudget = Math.max(0, limitTokens - fixedWithoutDoc - breakdown.document - breakdown.pendingUser);
+        historyBudget = Math.max(0, limitTokens - fixedWithoutDoc - breakdown.document);
         const retry = fitHistoryFromEnd(params.history, historyBudget);
         fitted = retry.fitted;
         omitted = retry.omitted;
@@ -239,14 +284,20 @@ export function assembleWritingIntentContext(params) {
     };
 }
 export function assembleWritingExecuteContext(params) {
-    const limitTokens = params.limitTokens ?? getContextWindowTokens();
+    const limitTokens = params.limitTokens ?? getContextWindowTokens(params.modelId);
     const outputReserve = params.outputReserve ?? getOutputReserveTokens();
-    let userContent = params.userParts.filter(Boolean).join('\n\n');
     const systemTokens = estimateTokens(params.systemPrompt);
-    const maxUser = limitTokens - systemTokens - outputReserve - 200;
-    if (estimateTokens(userContent) > maxUser) {
-        userContent = trimTextToTokenBudget(userContent, maxUser);
+    const maxUser = Math.max(0, limitTokens - systemTokens - outputReserve - 200);
+    // 修 C2：pinned 段（尤其用户指令）永不被截；只在 trimmable 段（本章正文/全篇节选）里裁
+    const pinnedText = (params.pinnedParts ?? []).filter(Boolean).join('\n\n');
+    const pinnedTokens = estimateTokens(pinnedText);
+    const trimBudget = Math.max(0, maxUser - pinnedTokens);
+    let trimmableText = (params.trimmableParts ?? []).filter(Boolean).join('\n\n');
+    if (estimateTokens(trimmableText) > trimBudget) {
+        trimmableText = trimTextToTokenBudget(trimmableText, trimBudget);
     }
+    // 指令类 pinned 段置前（模型先看到「要做什么」），再给可截断的正文/节选
+    const userContent = [pinnedText, trimmableText].filter(Boolean).join('\n\n');
     const userTokens = estimateTokens(userContent);
     const breakdown = {
         system: systemTokens,
@@ -265,13 +316,40 @@ export function assembleWritingExecuteContext(params) {
         userContent,
     };
 }
+/**
+ * 按 token 预算裁剪文本，裁剪结果（含压缩提示尾注）严格 <= maxTokens。
+ * 与语言感知的 estimateTokens 一致（二分找最长前缀），中文也不会因固定系数而超预算。
+ */
 export function trimTextToTokenBudget(text, maxTokens) {
     if (maxTokens <= 0)
         return '';
-    const maxChars = Math.floor(maxTokens * ESTIMATE_CHARS_PER_TOKEN);
-    if (text.length <= maxChars)
+    if (estimateTokens(text) <= maxTokens)
         return text;
-    return `${text.slice(0, maxChars)}\n…（下文已按上下文预算压缩）`;
+    const noteTokens = estimateTokens(TRIM_NOTE);
+    const budgetForBody = maxTokens - noteTokens;
+    if (budgetForBody <= 0) {
+        // 预算太小连尾注都放不下：退化为纯前缀硬截，仍保证 <= maxTokens
+        let lo = 0;
+        let hi = text.length;
+        while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            if (estimateTokens(text.slice(0, mid)) <= maxTokens)
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+        return text.slice(0, lo);
+    }
+    let lo = 0;
+    let hi = text.length;
+    while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        if (estimateTokens(text.slice(0, mid)) <= budgetForBody)
+            lo = mid;
+        else
+            hi = mid - 1;
+    }
+    return `${text.slice(0, lo)}${TRIM_NOTE}`;
 }
 export function shouldCompact(usage) {
     return usage.ratio >= COMPACT_THRESHOLD_RATIO || usage.droppedVerbatimTurns > 0;

@@ -61,6 +61,19 @@ function blockId(prefix: string, index: number): string {
   return `${prefix}-${index}`;
 }
 
+/** 组装结果里真正 fitted 的逐字历史条数（排除 system / 摘要 / 末条 pendingUser） */
+function countFittedHistory(messages: ContextChatMessage[]): number {
+  let count = 0;
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === 'system') continue;
+    if (msg.role === 'user' && msg.content.startsWith(SUMMARY_PREFIX)) continue;
+    if (i === messages.length - 1) continue; // pendingUser
+    count += 1;
+  }
+  return count;
+}
+
 export function formatMessagesAsMarkdown(messages: ContextChatMessage[]): string {
   return messages
     .map((m) => {
@@ -157,13 +170,16 @@ export function blocksFromAssembleChatResult(
     });
   }
 
+  // 修 C-Preview：fitted 历史是 historyMessageIds 的尾部；按偏移对齐，而非从 0 顺序取
+  const fittedHistoryCount = countFittedHistory(assembled.messages);
+  const idOffset = Math.max(0, (opts?.historyMessageIds?.length ?? 0) - fittedHistoryCount);
   let historyIdx = 0;
   for (const msg of assembled.messages) {
     if (msg.role === 'system') continue;
     if (msg.role === 'user' && msg.content.startsWith(SUMMARY_PREFIX)) continue;
     if (msg === assembled.messages[assembled.messages.length - 1]) continue;
 
-    const messageId = opts?.historyMessageIds?.[historyIdx];
+    const messageId = opts?.historyMessageIds?.[idOffset + historyIdx];
     const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
     blocks.push({
       id: blockId('history', idx++),
@@ -303,6 +319,8 @@ export function blocksFromWritingIntent(
     });
   }
 
+  const fittedHistoryCount = countFittedHistory(assembled.messages);
+  const idOffset = Math.max(0, (opts.historyMessageIds?.length ?? 0) - fittedHistoryCount);
   let historyIdx = 0;
   for (const msg of assembled.messages) {
     if (msg.role === 'system') continue;
@@ -310,7 +328,7 @@ export function blocksFromWritingIntent(
     if (msg === assembled.messages[assembled.messages.length - 1]) continue;
 
     const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
-    const messageId = opts.historyMessageIds?.[historyIdx];
+    const messageId = opts.historyMessageIds?.[idOffset + historyIdx];
     blocks.push({
       id: blockId('whist', idx++),
       kind,
