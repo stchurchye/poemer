@@ -27,6 +27,7 @@ import {
   buildChapterTitle,
   buildWritingAssistantChapterContext,
   parseChapterTitle,
+  planSpokenInsert,
   type Document,
   type Revision,
   type WritingUnderstandingScope,
@@ -65,6 +66,7 @@ import {
   insertTextAtOffset,
   type OcrPlacementTarget,
 } from '../lib/ocrInsert';
+import { VoiceInput } from '../components/VoiceInput';
 import {
   pickAssistantOcrImagesFromSource,
   promptAssistantOcrImages,
@@ -718,6 +720,27 @@ export function WritingScreen({ navigation, route }: Props) {
     await persistBody(bodyDraft);
   };
 
+  /** 语音口述：把「您说的是…」确认后的文字加进正文（决策走已单测的 planSpokenInsert，走同一条保存链） */
+  const insertSpokenText = async (spoken: string) => {
+    if (!doc || !activeChapter || !activeBlock) return;
+    const plan = planSpokenInsert({
+      existing: bodyDraft,
+      text: spoken,
+      selectionStart: selection.start,
+      selectionEnd: selection.end,
+      focused: bodyInputFocused,
+    });
+    if (!plan) return;
+    setBodyDraft(plan.content);
+    setSelection({ start: plan.caret, end: plan.caret });
+    await persistBody(plan.content, {
+      documentId: doc.id,
+      chapterId: activeChapter.id,
+      blockId: activeBlock.id,
+    });
+    setToast(zh.writing.bodySpeakDone);
+  };
+
   const renameArticleTitle = async () => {
     if (!doc) return;
     const next = await promptText(
@@ -1333,6 +1356,19 @@ export function WritingScreen({ navigation, route }: Props) {
               </>
             )}
 
+            {activeBlock && !editorChromeCollapsed && !ocrPlacementActive ? (
+              <View style={styles.bodySpeakBar}>
+                <Text style={styles.bodySpeakHint}>{zh.writing.bodySpeakSub}</Text>
+                <VoiceInput
+                  embedded
+                  label={zh.writing.bodySpeakLabel}
+                  confirmPrimaryLabel={zh.writing.bodySpeakConfirm}
+                  onConfirm={insertSpokenText}
+                  disabled={saving}
+                />
+              </View>
+            ) : null}
+
             <View style={styles.bodyInputWrap}>
               <AppTextInput
                 ref={bodyInputRef}
@@ -1604,6 +1640,16 @@ function createWritingScreenStyles(colors: ColorPalette) {
   workArea: { flex: 1, minHeight: 0, position: 'relative' },
   editorPane: { flex: 1, minHeight: 0 },
   bodyInputWrap: { flex: 1, minHeight: 0, position: 'relative' },
+  bodySpeakBar: {
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+    gap: 6,
+  },
+  bodySpeakHint: {
+    fontSize: typography.caption,
+    color: colors.textMuted,
+    paddingHorizontal: 2,
+  },
   assistantFab: {
     position: 'absolute',
     right: 16,

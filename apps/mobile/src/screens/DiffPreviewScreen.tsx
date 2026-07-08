@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppTextInput } from '../components/AppTextInput';
 import { DiffView } from '../components/DiffView';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { VoiceInput } from '../components/VoiceInput';
 import { TabletFrame } from '../components/TabletFrame';
 import { REPLY_LINE_HEIGHT_RATIO } from '../theme/fontPresets';
 import { useLayout, useTypography } from '../theme/layout';
@@ -567,6 +568,13 @@ export function DiffPreviewScreen({ route, navigation }: Props) {
               <>
             {retryPanelOpen ? (
               <View style={styles.retryPanel}>
+                <VoiceInput
+                  embedded
+                  label={zh.writing.retrySpeakLabel}
+                  confirmPrimaryLabel={zh.writing.retrySpeakConfirm}
+                  onConfirm={(t) => setRetryInput((prev) => (prev.trim() ? `${prev} ${t}` : t))}
+                  disabled={busy}
+                />
                 <AppTextInput
                   style={[
                     styles.retryInput,
