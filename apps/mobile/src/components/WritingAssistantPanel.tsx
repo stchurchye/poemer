@@ -20,6 +20,7 @@ import {
   type ContextUsage,
   type Revision,
   type AssistantGuideKey,
+  type StoryBible,
   type WritingAssistantMessage,
   type WritingUnderstandingScope,
 } from '@shiren/shared';
@@ -206,6 +207,7 @@ export function WritingAssistantPanel({
   const [contextUsageLoading, setContextUsageLoading] = useState(false);
   const [contextSelection, setContextSelection] = useState<ContextSelection | null>(null);
   const [contextDetailUsage, setContextDetailUsage] = useState<ContextUsage | null>(null);
+  const [storyBible, setStoryBible] = useState<StoryBible | null>(null);
   const [contextHubOpen, setContextHubOpen] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const { listRef, onScroll, scrollToEnd, scrollToEndIfFollowing } = useListAutoScroll();
@@ -243,6 +245,13 @@ export function WritingAssistantPanel({
           contextSelection: contextSelection ?? undefined,
         });
         setContextUsage(res.data);
+        // 顺带取当前文档的设定卡（只读展示用），失败静默不影响主流程
+        try {
+          const docRes = await api.getDocument(documentId);
+          setStoryBible(docRes.data.storyBible ?? null);
+        } catch {
+          /* 忽略：设定卡展示是锦上添花 */
+        }
         return res.data;
       } catch {
         setContextUsage(null);
@@ -1466,6 +1475,7 @@ export function WritingAssistantPanel({
               inline
               visible
               usage={contextDetailUsage}
+              storyBible={storyBible}
               onClose={() => setContextDetailUsage(null)}
             />
           </Pressable>

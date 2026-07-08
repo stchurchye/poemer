@@ -1,4 +1,4 @@
-import type { Block, Chapter, ChatMessage, ChatSession, Document, Revision, WritingAssistantMessage } from '../types.js';
+import type { Block, Chapter, ChatMessage, ChatSession, Document, Revision, StoryBible, WritingAssistantMessage } from '../types.js';
 import type { PersistedStore } from '../persistedStore.js';
 type Clock = () => string;
 type IdFactory = () => string;
@@ -35,6 +35,7 @@ export declare function createLocalStore(initial: PersistedStore, deps?: {
         writingContextSummary?: string | null;
         writingContextSummaryUpToMessageId?: string | null;
         documentContextSummary?: string | null;
+        storyBible?: StoryBible | null;
     }) => Document | undefined;
     updateChatSessionTitle: (sessionId: string, title: string) => ChatSession | undefined;
     getChatMessages: (sessionId: string) => ChatMessage[];

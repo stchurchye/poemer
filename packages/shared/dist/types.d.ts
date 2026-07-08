@@ -29,6 +29,23 @@ export interface Document {
     writingContextSummary?: string | null;
     writingContextSummaryUpToMessageId?: string | null;
     documentContextSummary?: string | null;
+    /** 设定卡：人物/称呼/时间线/风格常驻记忆，写作时常驻注入、不参与压缩 */
+    storyBible?: StoryBible | null;
+}
+/** 设定卡条目分类 */
+export type StoryBibleCategory = 'character' | 'term' | 'timeline' | 'style';
+export interface StoryBibleEntry {
+    id: string;
+    category: StoryBibleCategory;
+    /** 简称/词条，如「大姐」「阿珍」 */
+    label: string;
+    /** 说明，如「大女儿，1955 年生；正文里称『大姐』」 */
+    note: string;
+}
+export interface StoryBible {
+    entries: StoryBibleEntry[];
+    /** 最近一次自动抽取的时间（ISO 字符串） */
+    updatedAt?: string;
 }
 export interface Revision {
     id: string;

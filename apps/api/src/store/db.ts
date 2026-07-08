@@ -6,6 +6,7 @@ import type {
   ChatSession,
   Document,
   Revision,
+  StoryBible,
   WritingAssistantMessage,
 } from '@shiren/shared';
 import { formatChapterTitle } from '@shiren/shared';
@@ -300,6 +301,7 @@ export function updateDocumentContextFields(
     writingContextSummary?: string | null;
     writingContextSummaryUpToMessageId?: string | null;
     documentContextSummary?: string | null;
+    storyBible?: StoryBible | null;
   },
 ): Document | undefined {
   const doc = documents.get(documentId);

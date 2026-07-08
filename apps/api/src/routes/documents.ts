@@ -847,6 +847,7 @@ documentsRouter.post('/:id/assistant/confirm', async (c) => {
     understandingScope,
     documentExcerpt: body.documentExcerpt?.trim(),
     documentContextSummary: doc.documentContextSummary,
+    storyBible: doc.storyBible,
   });
 
   let suggested: string;

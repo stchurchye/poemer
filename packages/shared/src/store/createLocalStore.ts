@@ -5,6 +5,7 @@ import type {
   ChatSession,
   Document,
   Revision,
+  StoryBible,
   WritingAssistantMessage,
 } from '../types.js';
 import { formatChapterTitle } from '../document/formatChapterTitle.js';
@@ -373,6 +374,7 @@ export function createLocalStore(
       writingContextSummary?: string | null;
       writingContextSummaryUpToMessageId?: string | null;
       documentContextSummary?: string | null;
+      storyBible?: StoryBible | null;
     },
   ): Document | undefined {
     const doc = documents.get(documentId);

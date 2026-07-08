@@ -6,6 +6,7 @@ import {
   getContextWindowTokens,
   getOutputReserveTokens,
   hasWritingExecuteBasis,
+  formatStoryBibleForLlm,
   parseWritingExecuteResponse,
   trimTextToTokenBudgetTail,
   WRITING_EXECUTE_BASIS_ONLY_PROMPT,
@@ -16,6 +17,7 @@ import {
   writingRetryDoneComment,
   type ContextUsage,
   type ReplyDialect,
+  type StoryBible,
   type WritingExecuteBasis,
 } from '@shiren/shared';
 import { prepareWritingExecuteContext } from './contextPipeline.js';
@@ -94,6 +96,7 @@ export async function runWritingExecute(params: {
   understandingScope?: 'chapter' | 'document';
   documentExcerpt?: string;
   documentContextSummary?: string | null;
+  storyBible?: StoryBible | null;
 }): Promise<{
   text: string;
   comment: string;
@@ -110,6 +113,7 @@ export async function runWritingExecute(params: {
     understandingScope: params.understandingScope,
     documentExcerpt: params.documentExcerpt,
     documentContextSummary: params.documentContextSummary,
+    storyBible: params.storyBible,
   });
 
   const parsed = await completeWritingExecute(params.model, messages, {
@@ -141,6 +145,7 @@ export async function runWritingExecuteRetry(params: {
   priorFeedback?: string[];
   styleGuide?: string;
   dialect?: ReplyDialect;
+  storyBible?: StoryBible | null;
   limitTokens?: number;
   outputReserve?: number;
   modelId?: string | null;
@@ -148,7 +153,8 @@ export async function runWritingExecuteRetry(params: {
   const actionPrompt = ACTION_PROMPTS[params.action] ?? ACTION_PROMPTS['润色'];
   const isContinue = params.action === '续写';
 
-  const system = `${writingPersonaForDialect(params.dialect)}
+  const storyBibleBlock = formatStoryBibleForLlm(params.storyBible);
+  const system = `${storyBibleBlock ? `${storyBibleBlock}\n\n` : ''}${writingPersonaForDialect(params.dialect)}
 
 ${actionPrompt}
 

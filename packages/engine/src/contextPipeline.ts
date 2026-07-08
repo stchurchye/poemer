@@ -14,15 +14,18 @@ import {
   writingIntentPromptForDialect,
   writingPersonaForDialect,
   filterWritingMessagesForContext,
+  formatStoryBibleForLlm,
   ACTION_PROMPTS,
   WRITING_EXECUTE_OUTPUT_RULES,
   type ContextPreview,
   type ContextSelection,
   type ContextUsage,
   type ReplyDialect,
+  type StoryBible,
 } from '@shiren/shared';
 import type { ChatMessage, ChatSession, Document, WritingAssistantMessage } from '@shiren/shared';
 import { compactHistoryViaLlm, compactDocumentExcerptViaLlm } from './contextCompact.js';
+import { extractStoryBible } from './storyBibleExtract.js';
 import type { ContextStoreAdapter } from './contextStore.js';
 import type { ModelClient, ModelCompletionInput } from './modelClient.js';
 
@@ -346,6 +349,7 @@ export type PendingWritingContextCommit = {
   writingContextSummary?: string | null;
   writingContextSummaryUpToMessageId?: string | null;
   documentContextSummary?: string | null;
+  storyBible?: StoryBible | null;
 };
 
 export type PreparedWritingIntentContext = {
@@ -395,8 +399,13 @@ async function prepareWritingSidebarContext(
     params.allMessages,
     params.contextSelection,
   );
-  const systemPrompt =
+  // 设定卡常驻注入：拼进 system prompt，永远发送、不参与压缩、不被裁切
+  const baseSystemPrompt =
     params.systemPrompt ?? writingIntentPromptForDialect(params.dialect);
+  const storyBibleBlock = formatStoryBibleForLlm(params.document.storyBible);
+  const systemPrompt = storyBibleBlock
+    ? `${storyBibleBlock}\n\n${baseSystemPrompt}`
+    : baseSystemPrompt;
   let summary = params.document.writingContextSummary ?? null;
   let upToId = params.document.writingContextSummaryUpToMessageId ?? null;
   let doc = params.document;
@@ -489,6 +498,20 @@ async function prepareWritingSidebarContext(
       });
       pending = { ...(pending ?? {}), documentContextSummary: compactDoc };
       doc = { ...doc, documentContextSummary: compactDoc };
+      // 文档首次变长、生成全篇摘要的同时，一次性自动抽取设定卡（人物/称呼/时间线/风格）
+      if (!doc.storyBible?.entries?.length) {
+        const bible = await extractStoryBible({
+          model: params.model,
+          documentExcerpt: documentBlock,
+          existing: doc.storyBible,
+          existingSummary: compactDoc,
+          dialect: params.dialect,
+        });
+        if (bible.entries.length > 0) {
+          pending = { ...(pending ?? {}), storyBible: bible };
+          doc = { ...doc, storyBible: bible };
+        }
+      }
       documentBlock = `全篇摘要（供理解，勿改其它章）：\n${compactDoc}`;
     } else {
       break;
@@ -628,6 +651,7 @@ export function prepareWritingExecuteContext(params: {
   understandingScope?: 'chapter' | 'document';
   documentExcerpt?: string;
   documentContextSummary?: string | null;
+  storyBible?: StoryBible | null;
   limitTokens?: number;
   outputReserve?: number;
   modelId?: string | null;
@@ -636,7 +660,8 @@ export function prepareWritingExecuteContext(params: {
   const isContinue = params.action === '续写';
   const useFullDoc = params.understandingScope === 'document';
 
-  const system = `${writingPersonaForDialect(params.dialect)}
+  const storyBibleBlock = formatStoryBibleForLlm(params.storyBible);
+  const system = `${storyBibleBlock ? `${storyBibleBlock}\n\n` : ''}${writingPersonaForDialect(params.dialect)}
 
 ${actionPrompt}
 

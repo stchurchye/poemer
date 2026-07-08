@@ -838,6 +838,7 @@ export function createLocalApi(deps: {
           understandingScope,
           documentExcerpt: body.documentExcerpt?.trim(),
           documentContextSummary: doc.documentContextSummary,
+          storyBible: doc.storyBible,
         });
 
         const revision = store().createRevision({
@@ -925,6 +926,7 @@ export function createLocalApi(deps: {
             priorFeedback: options.retry.priorFeedback,
             styleGuide: doc.styleGuide,
             dialect,
+            storyBible: doc.storyBible,
           });
           text = result.text;
           comment = result.comment;

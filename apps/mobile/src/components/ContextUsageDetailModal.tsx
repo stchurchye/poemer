@@ -2,11 +2,12 @@ import { Modal, Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyl
 import type { ColorPalette } from '../theme/colors';
 import { useColors } from '../theme/ThemeContext';
 import { useThemedStyles } from '../theme/useThemedStyles';
-import type { ContextUsage } from '@shiren/shared';
+import type { ContextUsage, StoryBible } from '@shiren/shared';
 import {
   contextUsageForDisplay,
   formatTokenCount,
   getContextBreakdownSegmentsForDisplay,
+  STORY_BIBLE_CATEGORY_LABELS,
 } from '@shiren/shared';
 import { radius } from '../theme/tokens';
 import { useLayout } from '../theme/layout';
@@ -17,12 +18,21 @@ type ContentProps = {
   cardStyle?: StyleProp<ViewStyle>;
   onCompact?: () => void;
   compactBusy?: boolean;
+  /** 只读展示：小助手自动记下的设定（人物/称呼/时间线/风格） */
+  storyBible?: StoryBible | null;
 };
 
-export function ContextUsageDetailContent({ usage, cardStyle, onCompact, compactBusy }: ContentProps) {
+export function ContextUsageDetailContent({
+  usage,
+  cardStyle,
+  onCompact,
+  compactBusy,
+  storyBible,
+}: ContentProps) {
   const styles = useThemedStyles(createContextUsageDetailModalStyles);
 
   const { bodyFontSize, smallFontSize } = useLayout();
+  const bibleEntries = storyBible?.entries?.filter((e) => e.label?.trim() && e.note?.trim()) ?? [];
   const display = contextUsageForDisplay(usage);
   const percent = Math.round(display.ratio * 100);
   const segments = getContextBreakdownSegmentsForDisplay(display.breakdown);
@@ -73,6 +83,20 @@ export function ContextUsageDetailContent({ usage, cardStyle, onCompact, compact
         <Text style={[styles.hint, { fontSize: smallFontSize }]}>{zh.context.compactedHint}</Text>
       ) : null}
 
+      {bibleEntries.length > 0 ? (
+        <View style={styles.bibleSection}>
+          <Text style={[styles.bibleTitle, { fontSize: smallFontSize }]}>小助手记住的设定</Text>
+          {bibleEntries.map((e) => (
+            <View key={e.id} style={styles.bibleRow}>
+              <Text style={[styles.bibleLabel, { fontSize: smallFontSize }]}>
+                {STORY_BIBLE_CATEGORY_LABELS[e.category]}·{e.label}
+              </Text>
+              <Text style={[styles.bibleNote, { fontSize: smallFontSize }]}>{e.note}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {onCompact ? (
         <Pressable
           style={[styles.compactBtn, compactBusy && styles.compactBtnDisabled]}
@@ -97,6 +121,7 @@ type Props = {
   inline?: boolean;
   onCompact?: () => void;
   compactBusy?: boolean;
+  storyBible?: StoryBible | null;
 };
 
 export function ContextUsageDetailModal({
@@ -106,6 +131,7 @@ export function ContextUsageDetailModal({
   inline,
   onCompact,
   compactBusy,
+  storyBible,
 }: Props) {
   const styles = useThemedStyles(createContextUsageDetailModalStyles);
 
@@ -146,6 +172,7 @@ export function ContextUsageDetailModal({
           cardStyle={styles.inlineBody}
           onCompact={onCompact}
           compactBusy={compactBusy}
+          storyBible={storyBible}
         />
       </Pressable>
     );
@@ -165,6 +192,7 @@ export function ContextUsageDetailModal({
             cardStyle={styles.inlineBody}
             onCompact={onCompact}
             compactBusy={compactBusy}
+            storyBible={storyBible}
           />
         </Pressable>
       </Pressable>
@@ -301,6 +329,29 @@ function createContextUsageDetailModalStyles(colors: ColorPalette) {
     marginTop: 12,
     color: colors.textMuted,
     lineHeight: 34,
+  },
+  bibleSection: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  bibleTitle: {
+    color: colors.text,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  bibleRow: {
+    marginBottom: 8,
+  },
+  bibleLabel: {
+    color: colors.text,
+    fontWeight: '600',
+    lineHeight: 30,
+  },
+  bibleNote: {
+    color: colors.textMuted,
+    lineHeight: 30,
   },
   compactBtn: {
     marginTop: 14,

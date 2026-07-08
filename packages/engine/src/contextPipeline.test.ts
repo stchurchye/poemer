@@ -205,6 +205,59 @@ test('prepareWritingIntentContext: 触发压缩时不写 store，commit 后才�
   assert.equal(updates.length, 1, '提交时才写一次');
 });
 
+// ---- story-bible：设定卡常驻注入 system ----
+
+test('prepareWritingExecuteContext: 设定卡注入 system，改稿时模型看到人物设定', () => {
+  const { messages } = prepareWritingExecuteContext({
+    action: '润色',
+    oldText: '正文',
+    chapterTitle: '第一章',
+    storyBible: {
+      entries: [{ id: 'c1', category: 'character', label: '大姐', note: '大女儿，1955年生' }],
+    },
+  } as Parameters<typeof prepareWritingExecuteContext>[0]);
+  const sys = messages.find((m) => m.role === 'system');
+  assert.ok(sys && sys.content.includes('大姐') && sys.content.includes('大女儿'), '设定卡应进 system');
+  assert.ok(sys!.content.includes('以正文为准'), '应带冲突时以正文为准的告示');
+});
+
+test('prepareWritingIntentContext: 设定卡注入写作侧 system（短历史不压缩）', async () => {
+  const doc: Document = {
+    id: 'd2',
+    title: '回忆录',
+    chapters: [{ id: 'c1', title: '第一章', order: 0, blocks: [{ id: 'b1', content: '正文' }] }],
+    globalSummary: '',
+    styleGuide: '',
+    currentRevisionId: null,
+    revisionCount: 0,
+    updatedAt: '0',
+    createdAt: '0',
+    storyBible: {
+      entries: [{ id: 'c1', category: 'term', label: '阿珍', note: '大姐的小名' }],
+    },
+  } as Document;
+  const store: ContextStoreAdapter = {
+    getChatSession: () => undefined,
+    getChatMessages: () => [],
+    updateChatSessionContext: () => undefined,
+    getDocument: () => doc,
+    getWritingAssistantMessages: () => [],
+    updateDocumentContextFields: () => doc,
+  };
+  const prepared = await prepareWritingIntentContext({
+    store,
+    model: compactModel,
+    documentId: 'd2',
+    document: doc,
+    allMessages: [],
+    chapterBlock: '当前章',
+    documentBlock: '',
+    userMessage: '帮我改改',
+  } as Parameters<typeof prepareWritingIntentContext>[0]);
+  const sys = prepared.messages.find((m) => m.role === 'system');
+  assert.ok(sys && sys.content.includes('阿珍'), '写作侧 system 应带设定卡');
+});
+
 // ---- C2：改稿执行把用户指令放进 pinned 段，正文超长也不丢 ----
 
 test('prepareWritingExecuteContext: 正文超长时用户补充指令仍完整送达', () => {
