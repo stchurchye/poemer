@@ -32,6 +32,12 @@ const MODEL_PROFILES: Readonly<Record<string, ModelProfile>> = {
     contextWindowTokens: 1_048_576,
     maxCompletionTokens: 65_536,
   },
+  // 写作侧(API legacy)回复模型：DeepSeek 家族向来 128k 窗口，保守取值防组装超上游窗口
+  'deepseek-v4-pro': {
+    id: 'deepseek-v4-pro',
+    contextWindowTokens: 128_000,
+    maxCompletionTokens: 8_192,
+  },
 };
 
 /** 未知模型的保守兜底：取较小窗口，避免乐观放行导致上游超限 */

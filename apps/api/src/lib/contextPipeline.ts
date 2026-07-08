@@ -1,5 +1,5 @@
 import type { ContextSelection, ContextPreview, ContextUsage, ReplyDialect } from '@shiren/shared';
-import { ZENMUX_MODEL_CHAT } from '@shiren/shared';
+import { ZENMUX_MODEL_CHAT, DEEPSEEK_MODEL_PRO } from '@shiren/shared';
 import {
   prepareChatContext as enginePrepareChatContext,
   commitPreparedChatContext as engineCommitPreparedChatContext,
@@ -120,6 +120,8 @@ export async function prepareWritingIntentContext(
     store: storeAdapter,
     model: modelFromApiKey(apiKey),
     ...rest,
+    // 组装窗口按真实回复模型（DeepSeek，128k）取，避免按 272k 乐观放行而超上游窗口
+    modelId: DEEPSEEK_MODEL_PRO,
   });
 }
 
@@ -134,6 +136,7 @@ export async function prepareWritingChatContext(
     store: storeAdapter,
     model: modelFromApiKey(apiKey),
     ...rest,
+    modelId: DEEPSEEK_MODEL_PRO,
   });
 }
 

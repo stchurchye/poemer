@@ -71,3 +71,10 @@ test('parseStoryBibleEntries: 从模型 JSON 输出里解析条目，脏输入�
   assert.deepEqual(parseStoryBibleEntries('模型没有输出 JSON'), []);
   assert.deepEqual(parseStoryBibleEntries('[{"label":"缺category"}]'), []);
 });
+
+test('parseStoryBibleEntries: 散文里的杂散方括号（引用/列表）不干扰真数组', () => {
+  const raw = '参考 [1]，整理如下：\n[{"category":"character","label":"大姐","note":"大女儿"}]';
+  const entries = parseStoryBibleEntries(raw);
+  assert.equal(entries.length, 1, '应跳过杂散 [1] 取到真正的对象数组');
+  assert.equal(entries[0].label, '大姐');
+});

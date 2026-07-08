@@ -393,9 +393,12 @@ type PrepareWritingSidebarContextParams = {
 
 const MIN_DOC_CHARS_FOR_STORY_BIBLE = 6000;
 
+/** 修 review#7：同一文档正在抽取时不重复触发（intent+chat 双 prepare 会各调一次） */
+const storyBibleExtractInFlight = new Set<string>();
+
 /**
  * 后台自动抽取设定卡：不阻塞回复、抽到直接落库（幂等、无锚点、展示容错，即时持久安全）。
- * 独立于全篇摘要生成，故已有 summary 的旧文档也能补抽。已有设定卡或文档太短则跳过。
+ * 独立于全篇摘要生成，故已有 summary 的旧文档也能补抽。已有设定卡/文档太短/正在抽取则跳过。
  */
 function maybeExtractStoryBibleInBackground(
   params: PrepareWritingSidebarContextParams,
@@ -404,6 +407,8 @@ function maybeExtractStoryBibleInBackground(
   const excerpt = params.documentBlock ?? '';
   if (doc.storyBible?.entries?.length) return;
   if (excerpt.length <= MIN_DOC_CHARS_FOR_STORY_BIBLE) return;
+  if (storyBibleExtractInFlight.has(params.documentId)) return;
+  storyBibleExtractInFlight.add(params.documentId);
   void extractStoryBible({
     model: params.model,
     documentExcerpt: excerpt,
@@ -424,6 +429,9 @@ function maybeExtractStoryBibleInBackground(
     })
     .catch(() => {
       /* 后台抽取失败忽略 */
+    })
+    .finally(() => {
+      storyBibleExtractInFlight.delete(params.documentId);
     });
 }
 
@@ -537,8 +545,12 @@ async function prepareWritingSidebarContext(
         documentExcerpt: documentBlock,
         dialect: params.dialect,
       });
-      pending = { ...(pending ?? {}), documentContextSummary: compactDoc };
-      doc = { ...doc, documentContextSummary: compactDoc };
+      if (!compactDoc.trim()) break;
+      // 修 review#4：documentContextSummary 是文档级缓存、无锚点、幂等 → 即时落库安全（不经 pending）。
+      // 否则 API 双 prepare 只提交 chatPrepared，此摘要永不落库、每次请求白跑一次整篇压缩。
+      doc = params.store.updateDocumentContextFields(params.documentId, {
+        documentContextSummary: compactDoc,
+      }) ?? { ...doc, documentContextSummary: compactDoc };
       documentBlock = `全篇摘要（供理解，勿改其它章）：\n${compactDoc}`;
     } else {
       break;

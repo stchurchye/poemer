@@ -49,6 +49,7 @@ import {
   getContextWindowTokens,
   getOutputReserveTokens,
   ZENMUX_MODEL_CHAT,
+  ZENMUX_MODEL_FLASH_LITE,
 } from '@shiren/shared';
 import { getZenMuxApiKey } from './zenmuxKey';
 import { createDeepSeekModelClient, LocalModelError, verifyDeepSeekKeyDirect } from './localModelClient';

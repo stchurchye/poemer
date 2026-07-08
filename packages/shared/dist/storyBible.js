@@ -94,17 +94,64 @@ export function parseStoryBibleEntries(raw) {
     }
     return out;
 }
+/**
+ * 从模型输出里稳健地取出设定卡 JSON 数组。
+ * 修 review#10：不再用 indexOf('[')..lastIndexOf(']')（散文里的杂散 '['/']'，如引用 [1]、
+ * markdown 列表项，会错切导致整段解析失败）。改为括号匹配扫描每个 '[' 起的平衡数组，
+ * 偏向「含对象元素最多」的那个（真正的设定卡数组），忽略 [1]、[示例] 这类杂散小数组。
+ */
 function extractJsonArray(raw) {
-    const start = raw.indexOf('[');
-    const end = raw.lastIndexOf(']');
-    if (start < 0 || end <= start)
-        return null;
-    try {
-        const parsed = JSON.parse(raw.slice(start, end + 1));
-        return Array.isArray(parsed) ? parsed : null;
+    let best = null;
+    for (let i = 0; i < raw.length; i++) {
+        if (raw[i] !== '[')
+            continue;
+        const end = matchBalancedArrayEnd(raw, i);
+        if (end < 0)
+            continue;
+        try {
+            const parsed = JSON.parse(raw.slice(i, end + 1));
+            if (Array.isArray(parsed)) {
+                const objCount = parsed.filter((x) => x && typeof x === 'object').length;
+                if (objCount > 0 && (!best || objCount > best.objCount)) {
+                    best = { arr: parsed, objCount };
+                }
+                i = end; // 跳过整个数组，避免对嵌套元素重复扫描
+            }
+        }
+        catch {
+            /* 这个 '[' 不是合法数组起点，继续找下一个 */
+        }
     }
-    catch {
-        return null;
+    return best ? best.arr : null;
+}
+/** 从 start 处的 '[' 找到平衡的 ']'（跳过字符串内的括号）；找不到返回 -1 */
+function matchBalancedArrayEnd(raw, start) {
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let i = start; i < raw.length; i++) {
+        const c = raw[i];
+        if (inStr) {
+            if (esc)
+                esc = false;
+            else if (c === '\\')
+                esc = true;
+            else if (c === '"')
+                inStr = false;
+            continue;
+        }
+        if (c === '"')
+            inStr = true;
+        else if (c === '[' || c === '{')
+            depth++;
+        else if (c === ']' || c === '}') {
+            depth--;
+            if (depth === 0)
+                return c === ']' ? i : -1;
+            if (depth < 0)
+                return -1;
+        }
     }
+    return -1;
 }
 //# sourceMappingURL=storyBible.js.map

@@ -50,6 +50,7 @@ import {
 import {
   ErrorCodes,
   REPLY_DIALECT_HEADER,
+  DEEPSEEK_MODEL_PRO,
   assistantWelcomeLine,
   assistantRevisionReadyLine,
   buildWritingAssistantContextBlocks,
@@ -848,6 +849,7 @@ documentsRouter.post('/:id/assistant/confirm', async (c) => {
     documentExcerpt: body.documentExcerpt?.trim(),
     documentContextSummary: doc.documentContextSummary,
     storyBible: doc.storyBible,
+    modelId: DEEPSEEK_MODEL_PRO,
   });
 
   let suggested: string;
