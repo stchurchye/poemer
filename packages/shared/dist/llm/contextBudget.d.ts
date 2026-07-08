@@ -137,12 +137,12 @@ export declare function assembleWritingExecuteContext(params: {
 };
 /**
  * 按 token 预算裁剪文本，裁剪结果（含压缩提示尾注）严格 <= maxTokens。
- * 与语言感知的 estimateTokens 一致（二分找最长前缀），中文也不会因固定系数而超预算。
+ * 修 review#8：单遍逐字累加定位切点，与 estimateTokens 同权重，O(n)，不再二分+反复 slice 全串。
  */
 export declare function trimTextToTokenBudget(text: string, maxTokens: number): string;
 /**
  * 按 token 预算裁剪，但保留文本【末尾】（续写场景需要「从哪接着写」的尾部而非开头）。
- * 结果（含「（前文略）」提示）严格 <= maxTokens。
+ * 结果（含「（前文略）」提示）严格 <= maxTokens。O(n) 单遍。
  */
 export declare function trimTextToTokenBudgetTail(text: string, maxTokens: number): string;
 export declare function shouldCompact(usage: ContextUsage): boolean;
