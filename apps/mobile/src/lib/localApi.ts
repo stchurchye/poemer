@@ -940,6 +940,7 @@ export function createLocalApi(deps: {
             styleGuide: doc.styleGuide,
             dialect,
             chapterTitle: found.chapter.title,
+            storyBible: doc.storyBible,
           });
           text = executed.text;
           comment = executed.comment;

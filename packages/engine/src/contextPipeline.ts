@@ -349,7 +349,6 @@ export type PendingWritingContextCommit = {
   writingContextSummary?: string | null;
   writingContextSummaryUpToMessageId?: string | null;
   documentContextSummary?: string | null;
-  storyBible?: StoryBible | null;
 };
 
 export type PreparedWritingIntentContext = {
@@ -392,6 +391,42 @@ type PrepareWritingSidebarContextParams = {
   modelId?: string | null;
 };
 
+const MIN_DOC_CHARS_FOR_STORY_BIBLE = 6000;
+
+/**
+ * 后台自动抽取设定卡：不阻塞回复、抽到直接落库（幂等、无锚点、展示容错，即时持久安全）。
+ * 独立于全篇摘要生成，故已有 summary 的旧文档也能补抽。已有设定卡或文档太短则跳过。
+ */
+function maybeExtractStoryBibleInBackground(
+  params: PrepareWritingSidebarContextParams,
+): void {
+  const doc = params.document;
+  const excerpt = params.documentBlock ?? '';
+  if (doc.storyBible?.entries?.length) return;
+  if (excerpt.length <= MIN_DOC_CHARS_FOR_STORY_BIBLE) return;
+  void extractStoryBible({
+    model: params.model,
+    documentExcerpt: excerpt,
+    existing: doc.storyBible ?? null,
+    existingSummary: doc.documentContextSummary ?? null,
+    dialect: params.dialect,
+  })
+    .then((bible) => {
+      if (bible.entries.length > 0) {
+        try {
+          params.store.updateDocumentContextFields(params.documentId, {
+            storyBible: bible,
+          });
+        } catch {
+          /* 设定卡展示是锦上添花，落库失败忽略 */
+        }
+      }
+    })
+    .catch(() => {
+      /* 后台抽取失败忽略 */
+    });
+}
+
 async function prepareWritingSidebarContext(
   params: PrepareWritingSidebarContextParams,
 ): Promise<PreparedWritingIntentContext> {
@@ -410,6 +445,12 @@ async function prepareWritingSidebarContext(
   let upToId = params.document.writingContextSummaryUpToMessageId ?? null;
   let doc = params.document;
   let pending: PendingWritingContextCommit | null = null;
+
+  // 设定卡自动抽取：后台进行、不阻塞本轮回复；抽到就直接落库（设定卡无锚点、幂等、
+  // 展示端容错，即时持久是安全的，不违反 A1）。本轮不等待，下次请求即带上；已有则跳过。
+  // 独立于全篇摘要生成，故「已有 summary 但无设定卡」的旧文档也能补抽。
+  maybeExtractStoryBibleInBackground(params);
+
   let documentBlock =
     params.referenceScope === 'chapter' ? '' : params.documentBlock;
   let chapterBlock = params.chapterBlock;
@@ -498,20 +539,6 @@ async function prepareWritingSidebarContext(
       });
       pending = { ...(pending ?? {}), documentContextSummary: compactDoc };
       doc = { ...doc, documentContextSummary: compactDoc };
-      // 文档首次变长、生成全篇摘要的同时，一次性自动抽取设定卡（人物/称呼/时间线/风格）
-      if (!doc.storyBible?.entries?.length) {
-        const bible = await extractStoryBible({
-          model: params.model,
-          documentExcerpt: documentBlock,
-          existing: doc.storyBible,
-          existingSummary: compactDoc,
-          dialect: params.dialect,
-        });
-        if (bible.entries.length > 0) {
-          pending = { ...(pending ?? {}), storyBible: bible };
-          doc = { ...doc, storyBible: bible };
-        }
-      }
       documentBlock = `全篇摘要（供理解，勿改其它章）：\n${compactDoc}`;
     } else {
       break;
@@ -597,8 +624,11 @@ export async function previewWritingIntentContextPreview(params: {
       ? `全篇摘要：\n${params.document.documentContextSummary}`
       : params.documentBlock;
 
+  const bibleBlock = formatStoryBibleForLlm(params.document.storyBible);
   const assembled = assembleWritingIntentContext({
-    systemPrompt: writingIntentPromptForDialect(params.dialect),
+    systemPrompt: bibleBlock
+      ? `${bibleBlock}\n\n${writingIntentPromptForDialect(params.dialect)}`
+      : writingIntentPromptForDialect(params.dialect),
     summary: params.document.writingContextSummary,
     history: toTurns(historyMsgs),
     chapterBlock: params.chapterBlock,

@@ -306,7 +306,11 @@ export function updateDocumentContextFields(
 ): Document | undefined {
   const doc = documents.get(documentId);
   if (!doc) return undefined;
-  const updated: Document = { ...doc, ...fields, updatedAt: now() };
+  // 只写显式提供的字段（value !== undefined），避免「键存在即覆盖」清空已有摘要/设定卡
+  const patch = Object.fromEntries(
+    Object.entries(fields).filter(([, v]) => v !== undefined),
+  );
+  const updated: Document = { ...doc, ...patch, updatedAt: now() };
   documents.set(documentId, updated);
   persist();
   return updated;

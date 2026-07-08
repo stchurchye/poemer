@@ -4,6 +4,7 @@ import {
   formatStoryBibleForLlm,
   mergeStoryBible,
   parseStoryBibleEntries,
+  MAX_STORY_BIBLE_ENTRIES,
   STORY_BIBLE_CATEGORY_LABELS,
 } from './storyBible.js';
 import type { StoryBible } from './types.js';
@@ -43,6 +44,17 @@ test('mergeStoryBible: 同 label 更新 note、新 label 追加、稳定去重',
   assert.equal(daJie.length, 1, '同 label 不应重复');
   assert.equal(daJie[0].note, '新说明：1955 年生', '应更新为新说明');
   assert.ok(merged.entries.some((e) => e.label === '阿珍'), '新条目应追加');
+});
+
+test('mergeStoryBible: 条目数超上限时硬性截断（不靠模型自律）', () => {
+  const many = Array.from({ length: 100 }, (_, i) => ({
+    id: `e${i}`,
+    category: 'term' as const,
+    label: `词条${i}`,
+    note: `说明${i}`,
+  }));
+  const merged = mergeStoryBible({ entries: [] }, { entries: many });
+  assert.ok(merged.entries.length <= MAX_STORY_BIBLE_ENTRIES, '合并后条目数不得超过上限');
 });
 
 test('parseStoryBibleEntries: 从模型 JSON 输出里解析条目，脏输入不炸', () => {

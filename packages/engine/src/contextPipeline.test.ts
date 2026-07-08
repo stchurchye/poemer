@@ -221,6 +221,54 @@ test('prepareWritingExecuteContext: 设定卡注入 system，改稿时模型看�
   assert.ok(sys!.content.includes('以正文为准'), '应带冲突时以正文为准的告示');
 });
 
+test('prepareWritingIntentContext: 长文无设定卡时后台抽取并直接落库（不进 pending）', async () => {
+  const doc: Document = {
+    id: 'd3',
+    title: '回忆录',
+    chapters: [{ id: 'c1', title: '第一章', order: 0, blocks: [{ id: 'b1', content: '正文' }] }],
+    globalSummary: '',
+    styleGuide: '',
+    currentRevisionId: null,
+    revisionCount: 0,
+    updatedAt: '0',
+    createdAt: '0',
+    storyBible: null,
+  } as Document;
+  const updates: Array<Record<string, unknown>> = [];
+  const store: ContextStoreAdapter = {
+    getChatSession: () => undefined,
+    getChatMessages: () => [],
+    updateChatSessionContext: () => undefined,
+    getDocument: () => doc,
+    getWritingAssistantMessages: () => [],
+    updateDocumentContextFields: (_id, fields) => {
+      updates.push(fields as Record<string, unknown>);
+      return doc;
+    },
+  };
+  const bibleModel: ModelClient = {
+    async complete() {
+      return { text: '[{"category":"character","label":"大姐","note":"大女儿"}]' };
+    },
+  };
+  await prepareWritingIntentContext({
+    store,
+    model: bibleModel,
+    documentId: 'd3',
+    document: doc,
+    allMessages: [],
+    chapterBlock: '当前章',
+    documentBlock: '正文'.repeat(4000), // >6000 字，触发抽取
+    userMessage: '改改',
+  } as Parameters<typeof prepareWritingIntentContext>[0]);
+  // 让后台 fire-and-forget 的抽取微任务跑完
+  await new Promise((r) => setImmediate(r));
+  const bibleWrite = updates.find((u) => u.storyBible);
+  assert.ok(bibleWrite, '应后台抽取并直接落库 storyBible');
+  const entries = (bibleWrite!.storyBible as { entries: Array<{ label: string }> }).entries;
+  assert.ok(entries.some((e) => e.label === '大姐'));
+});
+
 test('prepareWritingIntentContext: 设定卡注入写作侧 system（短历史不压缩）', async () => {
   const doc: Document = {
     id: 'd2',

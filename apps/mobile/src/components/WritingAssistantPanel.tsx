@@ -245,13 +245,6 @@ export function WritingAssistantPanel({
           contextSelection: contextSelection ?? undefined,
         });
         setContextUsage(res.data);
-        // 顺带取当前文档的设定卡（只读展示用），失败静默不影响主流程
-        try {
-          const docRes = await api.getDocument(documentId);
-          setStoryBible(docRes.data.storyBible ?? null);
-        } catch {
-          /* 忽略：设定卡展示是锦上添花 */
-        }
         return res.data;
       } catch {
         setContextUsage(null);
@@ -409,6 +402,13 @@ export function WritingAssistantPanel({
   }, [onHeaderReadAloud, showTitle, speaking, canReadReply, toggleReadAloud]);
 
   const openContextDetail = useCallback(async () => {
+    // 打开详情弹窗时才拉取设定卡（只读展示用），避免 keystroke 级重复拉取与重渲染；失败静默
+    try {
+      const docRes = await api.getDocument(documentId);
+      setStoryBible(docRes.data.storyBible ?? null);
+    } catch {
+      /* 忽略：设定卡展示是锦上添花 */
+    }
     if (contextUsage) {
       setContextDetailUsage(contextUsage);
       return;
@@ -419,7 +419,7 @@ export function WritingAssistantPanel({
       return;
     }
     setContextHubOpen(true);
-  }, [contextUsage, refreshContextUsage, input]);
+  }, [contextUsage, refreshContextUsage, input, documentId]);
 
   useEffect(() => {
     if (!onHeaderContext || showTitle) {

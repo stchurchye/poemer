@@ -14,6 +14,9 @@ export const STORY_BIBLE_CATEGORY_LABELS: Record<StoryBibleCategory, string> = {
 const CATEGORY_ORDER: StoryBibleCategory[] = ['character', 'term', 'timeline', 'style'];
 const VALID_CATEGORIES = new Set<string>(CATEGORY_ORDER);
 
+/** 设定卡条目硬上限：不只靠提示词自律，防幻觉/失控模型注入超大常驻块 */
+export const MAX_STORY_BIBLE_ENTRIES = 30;
+
 /** 常驻块前缀；含「以正文为准」告示，避免抽错的设定强行左右改稿 */
 export const STORY_BIBLE_BLOCK_PREFIX =
   '【本文设定卡（请保持前后一致；若与正文冲突，一律以正文为准，不要据此改动正文事实）】';
@@ -77,7 +80,7 @@ export function mergeStoryBible(
       note: e.note.trim(),
     });
   }
-  return { entries: [...map.values()] };
+  return { entries: [...map.values()].slice(0, MAX_STORY_BIBLE_ENTRIES) };
 }
 
 /** 从模型输出里解析设定卡条目（宽松找 JSON 数组），非法/缺字段的丢弃，绝不抛错 */
@@ -85,7 +88,7 @@ export function parseStoryBibleEntries(raw: string): StoryBibleEntry[] {
   const arr = extractJsonArray(raw);
   if (!arr) return [];
   const out: StoryBibleEntry[] = [];
-  for (const item of arr) {
+  for (const item of arr.slice(0, MAX_STORY_BIBLE_ENTRIES * 2)) {
     if (!item || typeof item !== 'object') continue;
     const category = (item as Record<string, unknown>).category;
     const label = (item as Record<string, unknown>).label;
