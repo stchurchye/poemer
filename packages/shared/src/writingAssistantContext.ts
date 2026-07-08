@@ -69,7 +69,6 @@ export function formatArticleChaptersForLlm(
 
   const parts: string[] = [];
   let totalLen = 0;
-  let overflowed = false;
 
   for (let i = 0; i < chapters.length; i++) {
     const ch = chapters[i];
@@ -91,14 +90,14 @@ export function formatArticleChaptersForLlm(
 
     const segment = `${header}\n${body}`;
 
-    if (!overflowed && totalLen + segment.length <= MAX_DOCUMENT_EXCERPT) {
+    // 修 review#5：不 latch——只要还装得下就继续装（靠后的小章不会因前面某大章溢出而被迫占位）；
+    // 装不下的章：当前待改章尽量保正文，其它章降级为标题占位（不再整章静默消失）。
+    if (totalLen + segment.length <= MAX_DOCUMENT_EXCERPT) {
       parts.push(segment);
       totalLen += segment.length + 2;
       continue;
     }
 
-    // 预算已满：当前待改章仍尽量保正文，其它章降级为标题占位（不再整章消失）
-    overflowed = true;
     if (isActive) {
       const room = Math.max(500, MAX_DOCUMENT_EXCERPT - totalLen - header.length - 2);
       parts.push(`${header}\n${text.slice(0, room)}`);

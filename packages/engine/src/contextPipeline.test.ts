@@ -94,6 +94,25 @@ test('commitPreparedChatContext: 回复成功后提交才写一次 store', async
   assert.ok(current().contextSummaryUpToMessageId, '锚点已推进');
 });
 
+test('prepareChatContext: 压缩返回空串时不推进锚点、不提交（不丢历史）', async () => {
+  const { store, updateCalls } = makeStore(session, bigMsgs(40));
+  const emptyModel: ModelClient = {
+    async complete() {
+      return { text: '   ' }; // 弱模型拒答/上游返回空
+    },
+  };
+  const prepared = await prepareChatContext({
+    store,
+    model: emptyModel,
+    sessionId: 's1',
+    pendingUser: '在吗',
+    limitTokens: 3000,
+  });
+  assert.equal(prepared.pendingContextCommit, undefined, '空摘要不应提交');
+  commitPreparedChatContext(store, 's1', prepared);
+  assert.equal(updateCalls.length, 0, '空摘要绝不能推进锚点/写 store');
+});
+
 test('prepareChatContext: 不触发压缩时无 pendingContextCommit', async () => {
   const { store } = makeStore(session, bigMsgs(2));
   const prepared = await prepareChatContext({

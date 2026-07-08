@@ -69,9 +69,11 @@ function chatHistoryAfterAnchor(
 ): ChatMessage[] {
   if (!upToMessageId) return messages;
   const idx = messages.findIndex((m) => m.id === upToMessageId);
-  // 修 B3：锚点已设但找不到时，视为锚点前内容已被摘要覆盖，回退为空历史，
-  // 绝不回退成「返回全部历史」（那会把已进摘要的内容逐字全量重发、撑爆预算）。
-  return idx >= 0 ? messages.slice(idx + 1) : [];
+  // 修 review#6：锚点在原始消息里真的找不到（数据迁移/损坏、跨设备 id 不一致）时，回退为「全部」
+  // 而非空——宁可冗余重发已摘要内容，也绝不把活着的对话历史静默丢光。
+  // （B3 的写作侧「被 filter 剔除的锚点」问题已由 writingHistoryAfterAnchor 的 raw-first 定位解决，
+  //  chat 侧锚点是真实持久消息、正常不会 dangling，此回退仅在异常态触发。）
+  return idx >= 0 ? messages.slice(idx + 1) : messages;
 }
 
 function toTurns(messages: Array<{ role: string; content: string }>): HistoryTurn[] {
@@ -90,7 +92,8 @@ function writingHistoryAfterAnchor(
   let afterAnchor = messages;
   if (upToMessageId) {
     const idx = messages.findIndex((m) => m.id === upToMessageId);
-    afterAnchor = idx >= 0 ? messages.slice(idx + 1) : [];
+    // 修 review#6：原始序列里真找不到（迁移/损坏）时回退全部而非空，宁可冗余也不静默丢历史
+    afterAnchor = idx >= 0 ? messages.slice(idx + 1) : messages;
   }
   return filterWritingMessagesForContext(afterAnchor);
 }
@@ -194,12 +197,17 @@ export async function prepareChatContext(params: {
 
     // 压缩 completion 上限保持安全默认（8192），不按回复模型放大——压缩模型可能是
     // flash-lite / DeepSeek，其单次输出上限各异；modelId 只用于组装窗口，不传给压缩。
-    summary = await compactHistoryViaLlm({
+    const merged = await compactHistoryViaLlm({
       model: params.model,
       messages: toTurns(rawToFold),
       existingSummary: summary,
       dialect: params.dialect,
     });
+    // 修 review#1（HIGH）：压缩模型返回空/纯空白（弱模型拒答、上游异常返回空而非抛错）时，
+    // 绝不推进锚点、绝不提交空摘要——否则被折叠的逐字对话会连同摘要一起消失（重新引入 A1 丢失）。
+    // 保留既有 summary/upToId 不动，被挤出的旧轮次留在 store 里，下次请求再试压缩。
+    if (!merged.trim()) break;
+    summary = merged;
     upToId = rawToFold[rawToFold.length - 1]?.id ?? upToId;
     didCompact = true;
   }
@@ -451,15 +459,18 @@ async function prepareWritingSidebarContext(
     const omitCount = assembled.messagesToCompact.length;
     if (omitCount > 0) {
       const toCompact = historyMsgs.slice(0, omitCount);
-      summary = await compactHistoryViaLlm({
+      const merged = await compactHistoryViaLlm({
         model: params.model,
         messages: toTurns(toCompact),
         existingSummary: summary,
         dialect: params.dialect,
       });
+      // 修 review#1（HIGH）：压缩返回空时不推进锚点、不落库，保留既有摘要，避免逐字历史丢成空摘要
+      if (!merged.trim()) break;
+      summary = merged;
       const lastId = toCompact[toCompact.length - 1]?.id ?? upToId;
       upToId = lastId;
-      // 修 review#1：不再 prepare 阶段落库，累积到 pending，回复成功后由调用方提交；本地同步更新 doc 供后续使用
+      // 不在 prepare 阶段落库，累积到 pending，回复成功后由调用方提交；本地同步更新 doc 供后续使用
       pending = {
         ...(pending ?? {}),
         writingContextSummary: summary,

@@ -327,74 +327,62 @@ export function assembleWritingExecuteContext(params) {
         userContent,
     };
 }
+const TRIM_TAIL_NOTE = '（前文略）\n';
+function charTokenWeight(code) {
+    return isCjkCharCode(code) ? CJK_TOKENS_PER_CHAR : OTHER_TOKENS_PER_CHAR;
+}
+/** 最长前缀长度，使 estimateTokens(prefix) <= budget（单遍逐字累加，O(n)，不重复 slice） */
+function prefixCharsWithinBudget(text, budget) {
+    let sum = 0;
+    for (let i = 0; i < text.length; i++) {
+        const w = charTokenWeight(text.charCodeAt(i));
+        if (Math.ceil(sum + w) > budget)
+            return i;
+        sum += w;
+    }
+    return text.length;
+}
+/** 最小起始下标，使 estimateTokens(suffix) <= budget（单遍从尾累加，O(n)） */
+function suffixStartWithinBudget(text, budget) {
+    let sum = 0;
+    for (let i = text.length - 1; i >= 0; i--) {
+        const w = charTokenWeight(text.charCodeAt(i));
+        if (Math.ceil(sum + w) > budget)
+            return i + 1;
+        sum += w;
+    }
+    return 0;
+}
 /**
  * 按 token 预算裁剪文本，裁剪结果（含压缩提示尾注）严格 <= maxTokens。
- * 与语言感知的 estimateTokens 一致（二分找最长前缀），中文也不会因固定系数而超预算。
+ * 修 review#8：单遍逐字累加定位切点，与 estimateTokens 同权重，O(n)，不再二分+反复 slice 全串。
  */
 export function trimTextToTokenBudget(text, maxTokens) {
     if (maxTokens <= 0)
         return '';
     if (estimateTokens(text) <= maxTokens)
         return text;
-    const noteTokens = estimateTokens(TRIM_NOTE);
-    const budgetForBody = maxTokens - noteTokens;
+    const budgetForBody = maxTokens - estimateTokens(TRIM_NOTE);
     if (budgetForBody <= 0) {
-        // 预算太小连尾注都放不下：退化为纯前缀硬截，仍保证 <= maxTokens
-        let lo = 0;
-        let hi = text.length;
-        while (lo < hi) {
-            const mid = Math.ceil((lo + hi) / 2);
-            if (estimateTokens(text.slice(0, mid)) <= maxTokens)
-                lo = mid;
-            else
-                hi = mid - 1;
-        }
-        return text.slice(0, lo);
+        // 预算太小连尾注都放不下：纯前缀硬截，仍保证 <= maxTokens
+        return text.slice(0, prefixCharsWithinBudget(text, maxTokens));
     }
-    let lo = 0;
-    let hi = text.length;
-    while (lo < hi) {
-        const mid = Math.ceil((lo + hi) / 2);
-        if (estimateTokens(text.slice(0, mid)) <= budgetForBody)
-            lo = mid;
-        else
-            hi = mid - 1;
-    }
-    return `${text.slice(0, lo)}${TRIM_NOTE}`;
+    return `${text.slice(0, prefixCharsWithinBudget(text, budgetForBody))}${TRIM_NOTE}`;
 }
 /**
  * 按 token 预算裁剪，但保留文本【末尾】（续写场景需要「从哪接着写」的尾部而非开头）。
- * 结果（含「（前文略）」提示）严格 <= maxTokens。
+ * 结果（含「（前文略）」提示）严格 <= maxTokens。O(n) 单遍。
  */
 export function trimTextToTokenBudgetTail(text, maxTokens) {
     if (maxTokens <= 0)
         return '';
     if (estimateTokens(text) <= maxTokens)
         return text;
-    const note = '（前文略）\n';
-    const budgetForBody = maxTokens - estimateTokens(note);
+    const budgetForBody = maxTokens - estimateTokens(TRIM_TAIL_NOTE);
     if (budgetForBody <= 0) {
-        let lo = 0;
-        let hi = text.length;
-        while (lo < hi) {
-            const mid = Math.floor((lo + hi) / 2);
-            if (estimateTokens(text.slice(mid)) <= maxTokens)
-                hi = mid;
-            else
-                lo = mid + 1;
-        }
-        return text.slice(lo);
+        return text.slice(suffixStartWithinBudget(text, maxTokens));
     }
-    let lo = 0;
-    let hi = text.length;
-    while (lo < hi) {
-        const mid = Math.floor((lo + hi) / 2); // 起始下标：越小保留越多尾部
-        if (estimateTokens(text.slice(mid)) <= budgetForBody)
-            hi = mid;
-        else
-            lo = mid + 1;
-    }
-    return `${note}${text.slice(lo)}`;
+    return `${TRIM_TAIL_NOTE}${text.slice(suffixStartWithinBudget(text, budgetForBody))}`;
 }
 export function shouldCompact(usage) {
     return usage.ratio >= COMPACT_THRESHOLD_RATIO || usage.droppedVerbatimTurns > 0;
