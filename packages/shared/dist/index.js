@@ -16,6 +16,7 @@ export * from './llm/zenmuxClient.js';
 export * from './constants.js';
 export * from './document/formatChapterTitle.js';
 export * from './document/chapterTitle.js';
+export * from './document/spokenInsert.js';
 export * from './writingAssistantContext.js';
 export * from './llm/contextBudget.js';
 export * from './llm/contextPreview.js';
