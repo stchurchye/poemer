@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import { appAlert } from '../lib/appAlert';
+import { MessageRichText } from '../components/MessageRichText';
 import { filterVisibleDocuments, isDocumentHidden } from '../lib/documentVisibility';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -196,6 +197,8 @@ export function WritingScreen({ navigation, route }: Props) {
   const [toast, setToast] = useState(route.params?.toast);
   const [bodyDraft, setBodyDraft] = useState('');
   const [bodyInputFocused, setBodyInputFocused] = useState(false);
+  // 票B:正文 markdown 预览(只读渲染,复用聊天的 MessageRichText;编辑态互斥)。
+  const [bodyPreviewOpen, setBodyPreviewOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [readHint, setReadHint] = useState<string | null>(null);
@@ -1334,6 +1337,18 @@ export function WritingScreen({ navigation, route }: Props) {
             )}
 
             <View style={styles.bodyInputWrap}>
+              {bodyPreviewOpen ? (
+                <ScrollView
+                  style={[styles.bodyInput, isTablet && styles.bodyInputTablet]}
+                  contentContainerStyle={styles.bodyPreviewContent}
+                >
+                  {bodyDraft.trim() ? (
+                    <MessageRichText content={bodyDraft} variant="body" />
+                  ) : (
+                    <Text style={styles.bodyPreviewEmpty}>{zh.writing.bodyPlaceholder}</Text>
+                  )}
+                </ScrollView>
+              ) : (
               <AppTextInput
                 ref={bodyInputRef}
                 style={[
@@ -1373,7 +1388,24 @@ export function WritingScreen({ navigation, route }: Props) {
                 editable
                 textAlignVertical="top"
               />
-              {activeBlock && !assistantOpen && !ocrPlacementActive ? (
+              )}
+              {activeBlock && !ocrPlacementActive ? (
+                <Pressable
+                  style={styles.previewToggle}
+                  onPress={() => {
+                    // 进预览前落盘草稿,预览态与键盘/助手互斥。
+                    if (!bodyPreviewOpen) void saveBody();
+                    setBodyPreviewOpen((v) => !v);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={bodyPreviewOpen ? zh.writing.previewBodyExit : zh.writing.previewBody}
+                >
+                  <Text style={styles.previewToggleText}>
+                    {bodyPreviewOpen ? zh.writing.previewBodyExit : zh.writing.previewBody}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {activeBlock && !assistantOpen && !ocrPlacementActive && !bodyPreviewOpen ? (
                 <Pressable
                   style={[
                     styles.assistantFab,
@@ -1604,6 +1636,20 @@ function createWritingScreenStyles(colors: ColorPalette) {
   workArea: { flex: 1, minHeight: 0, position: 'relative' },
   editorPane: { flex: 1, minHeight: 0 },
   bodyInputWrap: { flex: 1, minHeight: 0, position: 'relative' },
+  bodyPreviewContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 48 },
+  bodyPreviewEmpty: { color: colors.textMuted, fontSize: 16, padding: 16 },
+  previewToggle: {
+    position: 'absolute',
+    top: 8,
+    right: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  previewToggleText: { color: colors.text, fontSize: 14 },
   assistantFab: {
     position: 'absolute',
     right: 16,

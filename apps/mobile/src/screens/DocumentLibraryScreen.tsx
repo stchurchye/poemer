@@ -22,6 +22,9 @@ import {
   useSuppressGlobalOfflineBanner,
 } from '../context/ApiConnectivityContext';
 import { appAlert } from '../lib/appAlert';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import { planMarkdownImport } from '@shiren/shared';
 import { filterVisibleDocuments } from '../lib/documentVisibility';
 import { duplicateDocument } from '../lib/duplicateDocument';
 import { promptText } from '../lib/promptText';
@@ -98,6 +101,56 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
     },
     [navigation],
   );
+
+  const [importing, setImporting] = useState(false);
+
+  // 票B:导入外部 .md/.markdown/.txt 成新文稿(planMarkdownImport 纯函数切章,UI 只搬运)。
+  const importMarkdown = useCallback(async () => {
+    if (importing || creating) return;
+    setImporting(true);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (res.canceled || !res.assets?.[0]) return;
+      const asset = res.assets[0];
+      const name = asset.name ?? '导入文稿';
+      if (!/\.(md|markdown|txt)$/i.test(name)) {
+        appAlert(zh.writing.importDocFailed, zh.writing.importDocBadType);
+        return;
+      }
+      const raw = await FileSystem.readAsStringAsync(asset.uri);
+      // 本地库是单 JSON 文件整体序列化——超大文本会拖慢每次落盘,20 万字封顶。
+      if (raw.length > 200_000) {
+        appAlert(zh.writing.importDocFailed, zh.writing.importDocTooLarge);
+        return;
+      }
+      const plan = planMarkdownImport(name, raw);
+      const created = await api.createDocument(plan.title);
+      let doc = created.data;
+      // 首章由 createDocument 自带(默认章名);填内容。后续章 addChapter(带标题)再填。
+      const first = doc.chapters[0];
+      doc = (
+        await api.saveDocumentContent(doc.id, first.id, first.blocks[0].id, plan.chapters[0].content)
+      ).data;
+      for (const ch of plan.chapters.slice(1)) {
+        doc = (await api.addChapter(doc.id, ch.title)).data;
+        const added = doc.chapters[doc.chapters.length - 1];
+        doc = (
+          await api.saveDocumentContent(doc.id, added.id, added.blocks[0].id, ch.content)
+        ).data;
+      }
+      rememberDocument(doc);
+      appAlert('好了', zh.writing.importDocDone);
+      openDocument(doc.id);
+    } catch (e) {
+      const { message, hint } = apiErrorText(e);
+      appAlert(zh.writing.importDocFailed, hint ? `${message}\n\n${hint}` : message);
+    } finally {
+      setImporting(false);
+    }
+  }, [importing, creating, openDocument]);
 
   const createDocument = useCallback(async () => {
     if (creating) return;
@@ -205,6 +258,13 @@ export function DocumentLibraryScreen({ navigation, route }: Props) {
           title={creating ? zh.writing.newDocCreating : zh.writing.newDoc}
           onPress={() => void createDocument()}
           disabled={creating || Boolean(duplicatingId)}
+          style={styles.newBtn}
+        />
+        <PrimaryButton
+          title={importing ? zh.writing.importDocPicking : zh.writing.importDoc}
+          onPress={() => void importMarkdown()}
+          disabled={importing || creating || Boolean(duplicatingId)}
+          variant="secondary"
           style={styles.newBtn}
         />
 
