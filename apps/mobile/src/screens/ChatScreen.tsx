@@ -22,6 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { AssistantGuideKey, ChatSession, ContextSelection, ContextUsage } from '@shiren/shared';
 import { api } from '../lib/api';
 import { apiErrorText, apiLoadErrorText } from '../lib/apiError';
+import { getStoredSkipIntentReview, textNeedsIntentReview } from '../lib/messagePreferences';
 import { useReconnectEffect, useSuppressGlobalOfflineBanner } from '../context/ApiConnectivityContext';
 import { HeaderChipButton } from '../components/HeaderChipButton';
 import { LoadErrorView } from '../components/LoadErrorView';
@@ -141,6 +142,7 @@ export function ChatScreen() {
   const { listRef, onScroll, scrollToEnd, scrollToEndIfFollowing } = useListAutoScroll();
   const sendingRef = useRef(false);
   const typewriterAbortRef = useRef<AbortController | null>(null);
+  const streamAbortRef = useRef<AbortController | null>(null);
   const visibleIndicesRef = useRef<number[]>([]);
   const viewabilityConfig = useRef({
     itemVisiblePercentThreshold: 15,
@@ -173,7 +175,11 @@ export function ChatScreen() {
           pending,
           contextSelection: contextSelection ?? undefined,
         });
-        setContextUsage(res.data);
+        // 预览只更新估算占比；保留上次发送的真实用量（供「实际用量」行），直到下次发送或切会话
+        setContextUsage((prev) => ({
+          ...res.data,
+          actualPromptTokens: prev?.actualPromptTokens,
+        }));
       } catch {
         setContextUsage(null);
       } finally {
@@ -284,6 +290,7 @@ export function ChatScreen() {
   useEffect(() => {
     return () => {
       typewriterAbortRef.current?.abort();
+      streamAbortRef.current?.abort();
     };
   }, []);
 
@@ -342,7 +349,11 @@ export function ChatScreen() {
     setCompactBusy(true);
     try {
       const res = await api.compactChatSession(sessionId);
-      setContextUsage(res.data.contextUsage);
+      // 压缩不是「发送」，保留上次发送的真实用量（与 refreshContextUsage 一致）
+      setContextUsage((prev) => ({
+        ...res.data.contextUsage,
+        actualPromptTokens: prev?.actualPromptTokens,
+      }));
       const compactText = res.data.assistantMessage.content?.trim() ?? '';
       setMessages((prev) => [
         ...prev,
@@ -416,61 +427,126 @@ export function ChatScreen() {
       void announceAssistantWaiting(thinkingLine);
       setSending(true);
 
+      // 纯文字走流式（逐段显示）；带图保持非流式（一次性 + 打字机）
+      const isStreaming = imagePayload.length === 0;
+      const ac = new AbortController();
+      streamAbortRef.current = ac;
+      let acc = '';
+      let firstDelta = true;
+      let flushScheduled = false;
+      const flushStream = () => {
+        flushScheduled = false;
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantId ? { ...m, displayContent: acc } : m)),
+        );
+        scrollToEndIfFollowing();
+      };
+
       try {
         const res = await api.sendChatMessage(sessionId, {
           content: sendContent,
           images: imagePayload.length > 0 ? imagePayload : undefined,
           imagePreviewUris: imagePreviewUris.length > 0 ? imagePreviewUris : undefined,
           contextSelection: contextSelection ?? undefined,
-        });
-        const fullText = res.data.assistant?.content ?? '';
-        sendingRef.current = false;
-        const ttsReady = fullText.trim()
-          ? announceAssistantReplySync(fullText)
-          : Promise.resolve();
-        setMessages((prev) => {
-          const rest = prev.filter((m) => m.id !== userId && m.id !== assistantId);
-          return [
-            ...rest,
-            { ...res.data.user, status: 'done' as const },
-            {
-              ...res.data.assistant!,
-              id: assistantId,
-              status: 'pending' as const,
-              content: fullText,
-              displayContent: thinkingLine,
-            },
-          ];
-        });
-        await ttsReady;
-        setMessages((prev) => {
-          const rest = prev.filter((m) => m.id !== userId);
-          return rest.map((m) =>
-            m.id === assistantId
-              ? {
-                  ...m,
-                  status: 'streaming' as const,
-                  content: fullText,
-                  displayContent: '',
+          signal: ac.signal,
+          onDelta: isStreaming
+            ? (chunk) => {
+                acc += chunk;
+                if (firstDelta) {
+                  firstDelta = false;
+                  void cancelAssistantFeedback(); // 停掉「等待」提示音
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantId
+                        ? { ...m, status: 'streaming' as const, displayContent: acc }
+                        : m,
+                    ),
+                  );
+                  scrollToEndIfFollowing();
+                } else if (!flushScheduled) {
+                  flushScheduled = true;
+                  setTimeout(flushStream, 50); // 节流，避免逐 token re-render 卡顿
                 }
-              : m,
-          );
+              }
+            : undefined,
         });
-        await revealAssistant(assistantId, fullText);
-        const serverAssistant = res.data.assistant!;
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId
-              ? { ...serverAssistant, status: 'done' as const, displayContent: undefined }
-              : m,
-          ),
-        );
+        streamAbortRef.current = null;
+        sendingRef.current = false;
+        const fullText = res.data.assistant?.content ?? acc;
+
+        if (isStreaming) {
+          // 流式：正文已逐段显示完，落定最终内容 + 流末并行朗读（不阻塞）
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id === userId && res.data.user) {
+                return { ...res.data.user, status: 'done' as const };
+              }
+              if (m.id === assistantId) {
+                return {
+                  ...res.data.assistant!,
+                  id: assistantId,
+                  status: 'done' as const,
+                  content: fullText,
+                  displayContent: undefined,
+                };
+              }
+              return m;
+            }),
+          );
+          if (fullText.trim()) announceAssistantReplyParallel(fullText);
+        } else {
+          // 带图（非流式）：保留原有「同步朗读 + 打字机」体验
+          const ttsReady = fullText.trim()
+            ? announceAssistantReplySync(fullText)
+            : Promise.resolve();
+          setMessages((prev) => {
+            const rest = prev.filter((m) => m.id !== userId && m.id !== assistantId);
+            return [
+              ...rest,
+              { ...res.data.user, status: 'done' as const },
+              {
+                ...res.data.assistant!,
+                id: assistantId,
+                status: 'pending' as const,
+                content: fullText,
+                displayContent: thinkingLine,
+              },
+            ];
+          });
+          await ttsReady;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, status: 'streaming' as const, content: fullText, displayContent: '' }
+                : m,
+            ),
+          );
+          await revealAssistant(assistantId, fullText);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...res.data.assistant!, status: 'done' as const, displayContent: undefined }
+                : m,
+            ),
+          );
+        }
+
         if (res.data.session) {
           setSession(res.data.session);
+        }
+        // 应用本次发送返回的用量（含 actualPromptTokens 真实值），供圆环详情「实际用量」行展示
+        if (res.data.contextUsage) {
+          setContextUsage(res.data.contextUsage);
         }
         void refreshSessions();
         scrollToEnd();
       } catch (e) {
+        streamAbortRef.current = null;
+        // 用户取消（切会话/退出）：丢弃这条流式气泡，不报错
+        if ((e as Error)?.name === 'AbortError' || ac.signal.aborted) {
+          setMessages((prev) => prev.filter((m) => m.id !== assistantId));
+          return;
+        }
         const { message, hint } = apiErrorText(e);
         setMessages((prev) =>
           prev.map((m) =>
@@ -488,6 +564,7 @@ export function ChatScreen() {
         scrollToEnd();
         void refreshSessions();
       } finally {
+        streamAbortRef.current = null;
         sendingRef.current = false;
         setSending(false);
       }
@@ -498,6 +575,7 @@ export function ChatScreen() {
       sending,
       revealAssistant,
       scrollToEnd,
+      scrollToEndIfFollowing,
       thinkingLine,
       refreshSessions,
       contextSelection,
@@ -537,6 +615,18 @@ export function ChatScreen() {
         if (source === 'text') setInput('');
         await dispatchChatMessage(trimmed, [...images]);
         return;
+      }
+
+      // 「直接发送」开关：普通文字问题跳过意图整理直接回答；
+      // 但改文章/改字、改字体/声音/语言/换话题等仍走完整意图（保留重定向与设置引导）。
+      if (source === 'text') {
+        const skipReview = await getStoredSkipIntentReview();
+        if (skipReview && !textNeedsIntentReview(trimmed)) {
+          setInput('');
+          setPendingIntent(null);
+          await dispatchChatMessage(trimmed);
+          return;
+        }
       }
 
       const sessionId = session?.id ?? (await ensureSession());
@@ -631,7 +721,10 @@ export function ChatScreen() {
       if (sending || intentAnalyzing || session?.id === sessionId) return;
       setPendingIntent(null);
       setPendingImages([]);
+      // 切会话先清空用量，避免上个会话的「实际用量」被 refreshContextUsage 带进新会话
+      setContextUsage(null);
       typewriterAbortRef.current?.abort();
+      streamAbortRef.current?.abort();
       void cancelAssistantFeedback();
       void stopSpeaking();
       setSpeaking(false);

@@ -39,13 +39,23 @@ export type ContextUsage = {
   breakdown: ContextUsageBreakdown;
   compacted: boolean;
   droppedVerbatimTurns: number;
+  /** 上次实际发送时平台返回的真实 prompt token（供详情弹窗「实际用量」行），发送前为空 */
+  actualPromptTokens?: number;
 };
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 300_000;
 export const DEFAULT_OUTPUT_RESERVE_TOKENS = 8_000;
-/** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限 */
-export const COMPACT_SUMMARY_MAX_TOKENS = 100_000;
-export const COMPACT_THRESHOLD_RATIO = 0.8;
+/**
+ * 「软工作窗口」：模型物理窗口（300k）很大，但日常聊天/写作远到不了，
+ * 致使压缩几乎不触发、用量圆环永远接近 0%。这里设更小的软目标来真正驱动
+ * 滑动窗口与摘要压缩；物理窗口仍由 getContextWindowTokens() 作安全上限。
+ */
+export const DEFAULT_CHAT_WORKING_WINDOW_TOKENS = 24_000;
+/** 写作侧栏要容纳「待改本章 + 全篇节选」，窗口略大 */
+export const DEFAULT_WRITING_WORKING_WINDOW_TOKENS = 48_000;
+/** LLM 压缩后的摘要/全篇摘要写入上下文时的 token 上限（真正起到压缩作用） */
+export const COMPACT_SUMMARY_MAX_TOKENS = 2_500;
+export const COMPACT_THRESHOLD_RATIO = 0.7;
 export const ESTIMATE_CHARS_PER_TOKEN = 1.6;
 
 export const SUMMARY_PREFIX = '【此前对话摘要】\n';
@@ -67,6 +77,22 @@ export function getCompactSummaryMaxTokens(): number {
     typeof process !== 'undefined' ? process.env.COMPACT_SUMMARY_MAX_TOKENS : undefined;
   const n = raw ? Number.parseInt(raw, 10) : COMPACT_SUMMARY_MAX_TOKENS;
   return Number.isFinite(n) && n > 0 ? n : COMPACT_SUMMARY_MAX_TOKENS;
+}
+
+/** 问答对话的软工作窗口（驱动滑窗 + 压缩，可用 env CHAT_WORKING_WINDOW_TOKENS 覆盖） */
+export function getChatWorkingWindowTokens(): number {
+  const raw =
+    typeof process !== 'undefined' ? process.env.CHAT_WORKING_WINDOW_TOKENS : undefined;
+  const n = raw ? Number.parseInt(raw, 10) : DEFAULT_CHAT_WORKING_WINDOW_TOKENS;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_CHAT_WORKING_WINDOW_TOKENS;
+}
+
+/** 写作侧栏的软工作窗口（可用 env WRITING_WORKING_WINDOW_TOKENS 覆盖） */
+export function getWritingWorkingWindowTokens(): number {
+  const raw =
+    typeof process !== 'undefined' ? process.env.WRITING_WORKING_WINDOW_TOKENS : undefined;
+  const n = raw ? Number.parseInt(raw, 10) : DEFAULT_WRITING_WORKING_WINDOW_TOKENS;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_WRITING_WORKING_WINDOW_TOKENS;
 }
 
 /** 将摘要正文裁到 COMPACT_SUMMARY_MAX_TOKENS，再包上前缀 */
@@ -123,6 +149,8 @@ export function contextUsageForDisplay(usage: ContextUsage): ContextUsage {
     ...usage.breakdown,
     pendingUser: 0,
   };
+  // 圆环始终按估算显示「当前」上下文（随打字变化）；真实用量另用「实际用量」行单独展示，
+  // 不混进圆环占比，避免发送后圆环跳到真实值、打字时又跳回估算的闪烁。
   const usedTokens =
     breakdown.system +
     breakdown.summary +

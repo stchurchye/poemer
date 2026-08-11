@@ -8,6 +8,8 @@ import {
   contextSelectionWithServerMarks,
   defaultSelectedBlockIds,
   filterHistoryTurns,
+  getChatWorkingWindowTokens,
+  getWritingWorkingWindowTokens,
   shouldCompact,
   usesExclusionMode,
   writingChatSystemPromptForDialect,
@@ -127,6 +129,7 @@ export async function prepareChatContext(params: {
       summary,
       history,
       pendingUser: params.pendingUser,
+      limitTokens: getChatWorkingWindowTokens(),
     });
 
     if (!assembled.needsCompact && !shouldCompact(assembled.usage)) {
@@ -165,6 +168,7 @@ export async function prepareChatContext(params: {
     summary,
     history: toTurns(historyMsgs),
     pendingUser: params.pendingUser,
+    limitTokens: getChatWorkingWindowTokens(),
   });
 
   return {
@@ -201,6 +205,7 @@ export async function previewChatContextPreview(params: {
     summary: session.contextSummary,
     history: toTurns(historyMsgs),
     pendingUser: params.pendingUser?.trim() || '…',
+    limitTokens: getChatWorkingWindowTokens(),
   });
   const preview = blocksFromAssembleChatResult(assembled, {
     historyMessageIds: historyMsgs.map((m) => m.id),
@@ -313,6 +318,7 @@ async function prepareWritingSidebarContext(
       chapterBlock,
       documentBlock,
       userMessage: params.userMessage,
+      limitTokens: getWritingWorkingWindowTokens(),
     }),
     { chapterBlock, documentBlock },
   );
@@ -333,6 +339,7 @@ async function prepareWritingSidebarContext(
       chapterBlock,
       documentBlock,
       userMessage: params.userMessage,
+      limitTokens: getWritingWorkingWindowTokens(),
     });
 
     if (!assembled.needsCompact && !shouldCompact(assembled.usage)) {
@@ -397,6 +404,7 @@ async function prepareWritingSidebarContext(
     chapterBlock,
     documentBlock: docBlock,
     userMessage: params.userMessage,
+    limitTokens: getWritingWorkingWindowTokens(),
   });
 
   return {
@@ -463,6 +471,7 @@ export async function previewWritingIntentContextPreview(params: {
     chapterBlock: params.chapterBlock,
     documentBlock: docBlock,
     userMessage: params.pendingUser?.trim() || '…',
+    limitTokens: getWritingWorkingWindowTokens(),
   });
 
   const preview = blocksFromWritingIntent(assembled, {

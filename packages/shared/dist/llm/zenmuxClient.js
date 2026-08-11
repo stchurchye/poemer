@@ -7,7 +7,47 @@ export class ZenMuxError extends Error {
         this.name = 'ZenMuxError';
     }
 }
-function buildWebSearchBody(webSearch) {
+/**
+ * 纯函数：解析一段 SSE 文本缓冲，抽出 delta 文本、（末尾的）usage、是否 [DONE]，
+ * 并返回未消费的残余（跨 chunk 半行）。放 shared 便于 Node 单测；真正的流式 fetch 在 mobile 端。
+ */
+export function parseZenMuxSseChunk(buffer) {
+    const lines = buffer.split('\n');
+    const rest = lines.pop() ?? '';
+    const deltas = [];
+    let usage;
+    let done = false;
+    for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith('data:'))
+            continue;
+        const data = t.slice(5).trim();
+        if (data === '[DONE]') {
+            done = true;
+            continue;
+        }
+        try {
+            const json = JSON.parse(data);
+            const delta = json.choices?.[0]?.delta?.content;
+            if (typeof delta === 'string' && delta.length > 0)
+                deltas.push(delta);
+            const u = json.usage;
+            if (u) {
+                usage = {
+                    promptTokens: u.prompt_tokens,
+                    completionTokens: u.completion_tokens,
+                    totalTokens: u.total_tokens,
+                    cacheHitTokens: u.prompt_tokens_details?.cached_tokens,
+                };
+            }
+        }
+        catch {
+            // 半行/非 JSON，忽略
+        }
+    }
+    return { deltas, usage, rest, done };
+}
+export function buildWebSearchBody(webSearch) {
     if (!webSearch?.enabled)
         return undefined;
     const userLocation = {
@@ -133,15 +173,29 @@ async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
     if (anthropicMessages.length === 0) {
         throw new ZenMuxError('消息为空');
     }
+    const outMessages = anthropicMessages.map((m) => ({ ...m }));
+    const stableIdx = outMessages.length - 2; // 倒数第二条 = 最后一个已成型的历史轮
+    if (stableIdx >= 0 && typeof outMessages[stableIdx].content === 'string') {
+        outMessages[stableIdx] = {
+            role: outMessages[stableIdx].role,
+            content: [
+                {
+                    type: 'text',
+                    text: outMessages[stableIdx].content,
+                    cache_control: { type: 'ephemeral' },
+                },
+            ],
+        };
+    }
     const payload = {
         model: options.model,
         max_tokens: options.maxTokens ?? 4096,
         temperature: options.temperature ?? 0.5,
-        messages: anthropicMessages,
+        messages: outMessages,
         tools: [buildAnthropicWebSearchTool(options.webSearch)],
     };
     if (system) {
-        payload.system = system;
+        payload.system = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
     }
     const res = await fetch(ZENMUX_ANTHROPIC_MESSAGES_URL, {
         method: 'POST',
@@ -158,7 +212,17 @@ async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
             `ZenMux Anthropic 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
-    options.onMeta?.({ status: res.status });
+    const u = json.usage;
+    // Anthropic 的 input_tokens 是「未命中缓存的余量」，真实输入 = input + cache_read + cache_creation
+    const usage = u
+        ? {
+            promptTokens: u.input_tokens,
+            completionTokens: u.output_tokens,
+            cacheHitTokens: u.cache_read_input_tokens,
+            cacheWriteTokens: u.cache_creation_input_tokens,
+        }
+        : undefined;
+    options.onMeta?.({ status: res.status, usage });
     return parseAnthropicResponse(json, options.appendCitations);
 }
 function isPlainTextMessages(messages) {
@@ -202,7 +266,16 @@ async function zenmuxChat(apiKey, messages, options) {
         const msg = json.error?.message ?? `ZenMux 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
-    options?.onMeta?.({ status: res.status });
+    const u = json.usage;
+    const usage = u
+        ? {
+            promptTokens: u.prompt_tokens,
+            completionTokens: u.completion_tokens,
+            totalTokens: u.total_tokens,
+            cacheHitTokens: u.prompt_tokens_details?.cached_tokens,
+        }
+        : undefined;
+    options?.onMeta?.({ status: res.status, usage });
     const message = json.choices?.[0]?.message;
     const raw = message?.content?.trim();
     if (!raw)
@@ -256,6 +329,7 @@ export async function zenmuxChatWithImages(params) {
         model: ZENMUX_MODEL_CHAT,
         maxTokens: 4096,
         temperature: 0.5,
+        onMeta: params.onMeta,
     });
 }
 /** 多轮纯文本对话（问问题回答，GPT-5.4） */

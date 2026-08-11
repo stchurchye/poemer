@@ -12,6 +12,7 @@ export * from './llm/zenmux.js';
 export * from './llm/qwenTts.js';
 export * from './llm/qwenAsr.js';
 export * from './llm/dashscopeClient.js';
+export * from './llm/tokenUsage.js';
 export * from './llm/zenmuxClient.js';
 export * from './constants.js';
 export * from './document/formatChapterTitle.js';

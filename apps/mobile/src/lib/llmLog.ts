@@ -6,6 +6,8 @@
  * 在「设置 → LLM 诊断日志」里查看并复制。
  */
 
+import type { ModelTokenUsage } from '@shiren/shared';
+
 export type LlmProvider = 'deepseek' | 'zenmux' | 'dashscope';
 
 export type LlmLogEntry = {
@@ -27,6 +29,8 @@ export type LlmLogEntry = {
   errorCode?: string;
   /** 平台返回的 error.message 原文（截断），区分欠费/密钥的关键 */
   errorMessage?: string;
+  /** 平台返回的真实 token 用量（拿得到时）；用于核对估算、验证缓存命中 */
+  usage?: ModelTokenUsage;
 };
 
 const buffer: LlmLogEntry[] = [];
@@ -37,6 +41,18 @@ export function truncateError(msg: unknown): string | undefined {
   if (msg == null) return undefined;
   const s = String(msg);
   return s.length > MAX_ERR_LEN ? `${s.slice(0, MAX_ERR_LEN)}…` : s;
+}
+
+/** 把真实用量拼成一行：`in=… out=… cache_hit=… cache_miss=…`；全空返回 undefined */
+export function formatUsageLine(usage?: ModelTokenUsage): string | undefined {
+  if (!usage) return undefined;
+  const parts: string[] = [];
+  if (usage.promptTokens != null) parts.push(`in=${usage.promptTokens}`);
+  if (usage.completionTokens != null) parts.push(`out=${usage.completionTokens}`);
+  if (usage.cacheHitTokens != null) parts.push(`cache_hit=${usage.cacheHitTokens}`);
+  if (usage.cacheMissTokens != null) parts.push(`cache_miss=${usage.cacheMissTokens}`);
+  if (usage.cacheWriteTokens != null) parts.push(`cache_write=${usage.cacheWriteTokens}`);
+  return parts.length > 0 ? parts.join(' ') : undefined;
 }
 
 export function logLlmCall(entry: Omit<LlmLogEntry, 'ts'>): void {
@@ -54,7 +70,9 @@ type LlmCallBase = {
 };
 
 /** 记一次成功调用 */
-export function logLlmSuccess(args: LlmCallBase & { contentLen?: number }): void {
+export function logLlmSuccess(
+  args: LlmCallBase & { contentLen?: number; usage?: ModelTokenUsage },
+): void {
   logLlmCall({
     label: args.label,
     provider: args.provider,
@@ -63,6 +81,7 @@ export function logLlmSuccess(args: LlmCallBase & { contentLen?: number }): void
     status: args.status,
     durationMs: Date.now() - args.startedAt,
     contentLen: args.contentLen,
+    usage: args.usage,
   });
 }
 
@@ -116,6 +135,10 @@ export function formatLlmLogsText(): string {
         lines.push(
           `  contentLen=${e.contentLen}${e.reasoningOnly ? ' ← 只有思考内容、正文为空（疑似 thinking，非欠费）' : ''}`,
         );
+      }
+      const usageLine = formatUsageLine(e.usage);
+      if (usageLine) {
+        lines.push(`  tokens: ${usageLine}`);
       }
       if (e.errorCode || e.errorMessage) {
         lines.push(`  error[${e.errorCode ?? ''}]: ${e.errorMessage ?? ''}`);

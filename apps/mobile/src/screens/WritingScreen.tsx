@@ -459,7 +459,11 @@ export function WritingScreen({ navigation, route }: Props) {
     } catch {
       // 网络失败时保留本地缓存，便于离线再看一眼
     }
-  }, [doc, activeBlock]);
+    // 依赖用 id 而非对象：每次 reconcile/loadDoc 都会 setDoc 成新对象，若依赖对象本身，
+    // 本回调身份会每帧变化，进而让下方 useFocusEffect 的回调每帧变化、无限重跑（Maximum update depth）。
+    // 回调内只用到 doc.id / activeBlock.id，依赖 id 即可且语义正确。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc?.id, activeBlock?.id]);
 
   /** 回到写作页时刷新待查看建议；失败重试由 ReconnectBanner / LoadErrorView 手动触发，避免 docError 触发依赖死循环 */
   useFocusEffect(

@@ -24,6 +24,7 @@ import {
   previewWritingIntentContextUsage,
   runWritingExecute,
   runWritingExecuteRetry,
+  streamChatMessages,
   summarizeChatSessionTitleLocal,
   type ContextStoreAdapter,
 } from '@shiren/engine';
@@ -338,6 +339,10 @@ export function createLocalApi(deps: {
         images?: unknown[];
         imagePreviewUris?: string[];
         contextSelection?: ContextSelection;
+        /** 提供则纯文字回答走流式，逐段回调 */
+        onDelta?: (chunk: string) => void;
+        /** 取消流（切会话/退出） */
+        signal?: AbortSignal;
       },
     ) => {
       const text = body.content?.trim() ?? '';
@@ -368,6 +373,7 @@ export function createLocalApi(deps: {
         });
 
         let reply: string;
+        let replyPromptTokens: number | undefined;
         if (images.length > 0) {
           const zenmuxKey = await getZenMuxApiKey();
           if (!zenmuxKey) {
@@ -388,6 +394,9 @@ export function createLocalApi(deps: {
               })),
               images,
               imageNotice: chatImageTurnLlmNotice(images.length),
+              onMeta: (meta) => {
+                replyPromptTokens = meta.usage?.promptTokens;
+              },
             });
           } catch (e) {
             if (e instanceof ZenMuxError) {
@@ -397,8 +406,22 @@ export function createLocalApi(deps: {
             }
             throw e;
           }
+        } else if (body.onDelta) {
+          // 流式：逐段回调，结束拿全文 + 真实 usage
+          const streamed = await streamChatMessages(
+            await chatReplyModel(),
+            prepared.messages,
+            { onDelta: body.onDelta, signal: body.signal },
+          );
+          reply = streamed.text;
+          replyPromptTokens = streamed.usage?.promptTokens;
         } else {
-          reply = await completeChatMessages(await chatReplyModel(), prepared.messages);
+          // 非流式：直接用 model.complete 拿真实 token 用量
+          const completion = await (await chatReplyModel()).complete({
+            messages: prepared.messages,
+          });
+          reply = completion.text.trim();
+          replyPromptTokens = completion.usage?.promptTokens;
         }
 
         const user = store().addChatMessage(sessionId, 'user', storedContent, {
@@ -431,7 +454,10 @@ export function createLocalApi(deps: {
           user,
           assistant,
           session: sessionOut,
-          contextUsage: prepared.usage,
+          contextUsage: {
+            ...prepared.usage,
+            actualPromptTokens: replyPromptTokens,
+          },
         });
       } catch (e) {
         rethrowAsApiError(e);

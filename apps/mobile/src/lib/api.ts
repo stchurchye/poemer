@@ -173,6 +173,8 @@ export const api = {
       images?: Array<{ imageBase64: string; mimeType?: string }>;
       imagePreviewUris?: string[];
       contextSelection?: import('@shiren/shared').ContextSelection;
+      onDelta?: (chunk: string) => void;
+      signal?: AbortSignal;
     },
   ) => local().sendChatMessage(sessionId, body),
 

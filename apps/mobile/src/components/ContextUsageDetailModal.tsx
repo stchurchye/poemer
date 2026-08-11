@@ -69,6 +69,12 @@ export function ContextUsageDetailContent({ usage, cardStyle, onCompact, compact
         ))}
       </View>
 
+      {usage.actualPromptTokens != null ? (
+        <Text style={[styles.hint, { fontSize: smallFontSize }]}>
+          {zh.context.actualUsage(formatTokenCount(usage.actualPromptTokens))}
+        </Text>
+      ) : null}
+
       {display.compacted ? (
         <Text style={[styles.hint, { fontSize: smallFontSize }]}>{zh.context.compactedHint}</Text>
       ) : null}
