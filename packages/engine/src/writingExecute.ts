@@ -94,6 +94,7 @@ export async function runWritingExecute(params: {
   understandingScope?: 'chapter' | 'document';
   documentExcerpt?: string;
   documentContextSummary?: string | null;
+  modelId?: string | null;
 }): Promise<{
   text: string;
   comment: string;
@@ -110,6 +111,7 @@ export async function runWritingExecute(params: {
     understandingScope: params.understandingScope,
     documentExcerpt: params.documentExcerpt,
     documentContextSummary: params.documentContextSummary,
+    modelId: params.modelId,
   });
 
   const parsed = await completeWritingExecute(params.model, messages, {

@@ -98,6 +98,24 @@ function writingHistoryAfterAnchor(
   return filterWritingMessagesForContext(afterAnchor);
 }
 
+/**
+ * 单一「摘要锚点」只能表示原始消息的一段连续前缀。用户临时排除/点选过消息时，
+ * 压缩结果可以服务本轮，但不能持久化锚点，否则会跨过未进摘要的原话。
+ */
+function hasCustomHistoryFilter(selection?: ContextSelection | null): boolean {
+  return Boolean(
+    (selection?.excludedMessageIds?.length ?? 0) > 0 ||
+      (selection?.selectedMessageIds?.length ?? 0) > 0 ||
+      excludesSummary(selection),
+  );
+}
+
+function excludesSummary(selection?: ContextSelection | null): boolean {
+  return Boolean(
+    selection?.excludedBlockIds?.some((id) => id.startsWith('summary-')),
+  );
+}
+
 /** 压缩产物：由 prepareChatContext 决定、但只在模型回复成功后由调用方提交（修 A1） */
 export type PendingContextCommit = {
   summary: string;
@@ -153,10 +171,12 @@ export async function prepareChatContext(params: {
     allMessages,
     params.contextSelection,
   );
+  const customHistoryFilter = hasCustomHistoryFilter(effectiveSelection);
   const systemPrompt = chatPersonaForDialect(params.dialect);
 
-  let summary = session.contextSummary ?? null;
-  let upToId = session.contextSummaryUpToMessageId ?? null;
+  const summaryExcluded = excludesSummary(effectiveSelection);
+  let summary = summaryExcluded ? null : session.contextSummary ?? null;
+  let upToId = summaryExcluded ? null : session.contextSummaryUpToMessageId ?? null;
   let didCompact = false;
 
   const assembleOpts = {
@@ -190,10 +210,14 @@ export async function prepareChatContext(params: {
     const lastFoldedId = filteredToFold[filteredToFold.length - 1]?.id;
     if (!lastFoldedId) break;
 
-    // 修 A2：锚点基于「原始序列」推进——折叠 rawAfterAnchor 中到 lastFoldedId 为止的整段前缀
-    // （含期间任何被 selection 排除的消息），保证锚点绝不越过未进摘要的消息。
+    // 无筛选时折叠原始连续前缀，锚点可安全持久化。存在筛选时绝不把被排除消息
+    // 偷偷送进摘要模型；摘要只服务本轮，最终不会持久化锚点。
     const rawCut = rawAfterAnchor.findIndex((m) => m.id === lastFoldedId);
-    const rawToFold = rawCut >= 0 ? rawAfterAnchor.slice(0, rawCut + 1) : filteredToFold;
+    const rawToFold = customHistoryFilter
+      ? filteredToFold
+      : rawCut >= 0
+        ? rawAfterAnchor.slice(0, rawCut + 1)
+        : filteredToFold;
 
     // 压缩 completion 上限保持安全默认（8192），不按回复模型放大——压缩模型可能是
     // flash-lite / DeepSeek，其单次输出上限各异；modelId 只用于组装窗口，不传给压缩。
@@ -231,7 +255,7 @@ export async function prepareChatContext(params: {
       compacted: Boolean(summary?.trim()),
     },
     session: params.store.getChatSession(params.sessionId)!,
-    pendingContextCommit: didCompact
+    pendingContextCommit: didCompact && !customHistoryFilter
       ? { summary: summary ?? '', upToMessageId: upToId }
       : undefined,
   };
@@ -252,13 +276,17 @@ export async function previewChatContextPreview(params: {
     allMessages,
     params.contextSelection,
   );
+  const summaryExcluded = excludesSummary(effectiveSelection);
   const historyMsgs = applyContextSelection(
-    chatHistoryAfterAnchor(allMessages, session.contextSummaryUpToMessageId),
+    chatHistoryAfterAnchor(
+      allMessages,
+      summaryExcluded ? null : session.contextSummaryUpToMessageId,
+    ),
     effectiveSelection,
   );
   const assembled = assembleChatContext({
     systemPrompt: chatPersonaForDialect(params.dialect),
-    summary: session.contextSummary,
+    summary: summaryExcluded ? null : session.contextSummary,
     history: toTurns(historyMsgs),
     pendingUser: params.pendingUser?.trim() || '…',
   });
@@ -267,12 +295,15 @@ export async function previewChatContextPreview(params: {
     excludedMessageIds: usesExclusionMode(effectiveSelection)
       ? effectiveSelection!.excludedMessageIds
       : undefined,
+    availableSummary: summaryExcluded ? session.contextSummary : undefined,
   });
   return {
     ...preview,
     usage: {
       ...preview.usage,
-      compacted: Boolean(session.contextSummary?.trim()) || assembled.needsCompact,
+      compacted:
+        (!summaryExcluded && Boolean(session.contextSummary?.trim())) ||
+        assembled.needsCompact,
     },
   };
 }
@@ -327,6 +358,17 @@ export async function compactChatSession(params: {
     existingSummary: session.contextSummary ?? null,
     dialect: params.dialect,
   });
+  if (!summary.trim()) {
+    const usage = await previewChatContextUsage({
+      store: params.store,
+      sessionId: params.sessionId,
+      dialect: params.dialect,
+    });
+    return {
+      confirmation: '本次整理没有生成有效摘要，已保留原对话，请稍后再试。',
+      usage,
+    };
+  }
   const lastId = afterAnchor[afterAnchor.length - 1]?.id ?? null;
   params.store.updateChatSessionContext(params.sessionId, summary, lastId);
 
@@ -395,10 +437,14 @@ async function prepareWritingSidebarContext(
     params.allMessages,
     params.contextSelection,
   );
+  const customHistoryFilter = hasCustomHistoryFilter(effectiveSelection);
   const systemPrompt =
     params.systemPrompt ?? writingIntentPromptForDialect(params.dialect);
-  let summary = params.document.writingContextSummary ?? null;
-  let upToId = params.document.writingContextSummaryUpToMessageId ?? null;
+  const summaryExcluded = excludesSummary(effectiveSelection);
+  let summary = summaryExcluded ? null : params.document.writingContextSummary ?? null;
+  let upToId = summaryExcluded
+    ? null
+    : params.document.writingContextSummaryUpToMessageId ?? null;
   let doc = params.document;
   let pending: PendingWritingContextCommit | null = null;
   let documentBlock =
@@ -470,12 +516,14 @@ async function prepareWritingSidebarContext(
       summary = merged;
       const lastId = toCompact[toCompact.length - 1]?.id ?? upToId;
       upToId = lastId;
-      // 不在 prepare 阶段落库，累积到 pending，回复成功后由调用方提交；本地同步更新 doc 供后续使用
-      pending = {
-        ...(pending ?? {}),
-        writingContextSummary: summary,
-        writingContextSummaryUpToMessageId: lastId,
-      };
+      // 自定义消息筛选下，摘要只服务本轮，不能用单一锚点跨过未进摘要的消息。
+      if (!customHistoryFilter) {
+        pending = {
+          ...(pending ?? {}),
+          writingContextSummary: summary,
+          writingContextSummaryUpToMessageId: lastId,
+        };
+      }
       doc = {
         ...doc,
         writingContextSummary: summary,
@@ -487,8 +535,12 @@ async function prepareWritingSidebarContext(
         documentExcerpt: documentBlock,
         dialect: params.dialect,
       });
-      pending = { ...(pending ?? {}), documentContextSummary: compactDoc };
-      doc = { ...doc, documentContextSummary: compactDoc };
+      if (!compactDoc.trim()) break;
+      // 文档摘要没有消息锚点，是可重复生成的缓存；立即保存，避免 intent/chat 双 prepare
+      // 只提交后一份 pending 时让前一次昂贵摘要白算。
+      doc = params.store.updateDocumentContextFields(params.documentId, {
+        documentContextSummary: compactDoc,
+      }) ?? { ...doc, documentContextSummary: compactDoc };
       documentBlock = `全篇摘要（供理解，勿改其它章）：\n${compactDoc}`;
     } else {
       break;
@@ -556,15 +608,17 @@ export async function previewWritingIntentContextPreview(params: {
   pendingUser?: string;
   dialect?: ReplyDialect;
   contextSelection?: ContextSelection;
+  modelId?: string | null;
 }): Promise<ContextPreview> {
   const effectiveSelection = contextSelectionWithServerMarks(
     params.allMessages,
     params.contextSelection,
   );
+  const summaryExcluded = excludesSummary(effectiveSelection);
   const historyMsgs = applyContextSelection(
     writingHistoryAfterAnchor(
       params.allMessages,
-      params.document.writingContextSummaryUpToMessageId,
+      summaryExcluded ? null : params.document.writingContextSummaryUpToMessageId,
     ),
     effectiveSelection,
   );
@@ -576,11 +630,12 @@ export async function previewWritingIntentContextPreview(params: {
 
   const assembled = assembleWritingIntentContext({
     systemPrompt: writingIntentPromptForDialect(params.dialect),
-    summary: params.document.writingContextSummary,
+    summary: summaryExcluded ? null : params.document.writingContextSummary,
     history: toTurns(historyMsgs),
     chapterBlock: params.chapterBlock,
     documentBlock: docBlock,
     userMessage: params.pendingUser?.trim() || '…',
+    modelId: params.modelId,
   });
 
   const preview = blocksFromWritingIntent(assembled, {
@@ -592,6 +647,9 @@ export async function previewWritingIntentContextPreview(params: {
       : undefined,
     excludedBlockIds: usesExclusionMode(effectiveSelection)
       ? effectiveSelection!.excludedBlockIds
+      : undefined,
+    availableSummary: summaryExcluded
+      ? params.document.writingContextSummary
       : undefined,
   });
 
@@ -613,6 +671,7 @@ export async function previewWritingIntentContextUsage(params: {
   pendingUser?: string;
   dialect?: ReplyDialect;
   contextSelection?: ContextSelection;
+  modelId?: string | null;
 }): Promise<ContextUsage> {
   const preview = await previewWritingIntentContextPreview(params);
   return preview.usage;

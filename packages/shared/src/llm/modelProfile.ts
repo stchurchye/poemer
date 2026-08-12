@@ -5,6 +5,7 @@
  * 又依赖 RN 下永远失效的 process.env 覆盖。数值来自 ZenMux / 各厂商文档（2026-07 核对）：
  * - google/gemini-3.1-flash-lite：输入 1,048,576 / 输出 65,536
  * - openai/gpt-5.4：标准输入 272,000（实验性可到 ~1.05M，这里取标准值保守）/ 输出 128,000
+ * - deepseek-v4-pro：官方 V4 服务 1M 上下文；输出上限保守按 8,192
  *
  * 「尽量保原文」的前提是窗口取真实值：窗口越大，越少压缩、越多逐字历史。
  */
@@ -31,6 +32,11 @@ const MODEL_PROFILES: Readonly<Record<string, ModelProfile>> = {
     id: 'google/gemini-3.1-flash-lite',
     contextWindowTokens: 1_048_576,
     maxCompletionTokens: 65_536,
+  },
+  'deepseek-v4-pro': {
+    id: 'deepseek-v4-pro',
+    contextWindowTokens: 1_000_000,
+    maxCompletionTokens: 8_192,
   },
 };
 

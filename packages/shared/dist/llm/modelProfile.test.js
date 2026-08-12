@@ -11,6 +11,12 @@ test('getModelProfile returns ~1M window for gemini flash-lite', () => {
     assert.equal(p.contextWindowTokens, 1_048_576);
     assert.equal(p.maxCompletionTokens, 65_536);
 });
+test('getModelProfile returns current 1M window for DeepSeek V4 Pro', () => {
+    const p = getModelProfile('deepseek-v4-pro');
+    assert.equal(p.contextWindowTokens, 1_000_000);
+    assert.equal(p.maxCompletionTokens, 8_192);
+    assert.ok(listKnownModelIds().includes('deepseek-v4-pro'));
+});
 test('unknown / missing model falls back to conservative default', () => {
     assert.deepEqual(getModelProfile('some/unknown-model'), DEFAULT_MODEL_PROFILE);
     assert.deepEqual(getModelProfile(undefined), DEFAULT_MODEL_PROFILE);

@@ -4,6 +4,7 @@ import {
   writingIntentPromptForDialect,
 } from '@shiren/shared';
 import type { ModelClient } from './modelClient.js';
+import type { ModelCompletionInput } from './modelClient.js';
 
 export type WritingIntentAnalysis = {
   mode: 'chat' | 'revise' | 'guide';
@@ -53,27 +54,33 @@ export async function analyzeWritingIntentLocal(
     content: m.content,
   }));
 
-  const res = await model.complete({
-    messages: [
+  return analyzeWritingIntentMessagesLocal(
+    model,
+    [
       { role: 'system', content: writingIntentPromptForDialect(input.dialect) },
       ...historyMsgs,
-      {
-        role: 'user',
-        content: chapterUserPayload(input),
-      },
+      { role: 'user', content: chapterUserPayload(input) },
     ],
-    temperature: 0.4,
-  });
+    input.content,
+  );
+}
 
+/** 解析已经由上下文管线完成预算、摘要和用户筛选的写作意图消息。 */
+export async function analyzeWritingIntentMessagesLocal(
+  model: ModelClient,
+  messages: ModelCompletionInput['messages'],
+  fallbackInstruction: string,
+): Promise<WritingIntentAnalysis> {
+  const res = await model.complete({ messages, temperature: 0.4 });
   const parsed = parseWritingIntentResponse(res.text);
   return {
     mode: parsed.mode,
     referenceScope: parsed.referenceScope,
     displayText: parsed.displayText,
     action: parsed.action,
-    instruction: parsed.mode === 'revise' ? parsed.instruction || input.content : '',
+    instruction:
+      parsed.mode === 'revise' ? parsed.instruction || fallbackInstruction : '',
     ready: parsed.ready,
     guide: parsed.guide,
   };
 }
-

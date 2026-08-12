@@ -34,6 +34,8 @@ export declare function defaultSelectedBlockIds(blocks: ContextPreviewBlock[]): 
 export declare function blocksFromAssembleChatResult(assembled: AssembleChatResult, opts?: {
     historyMessageIds?: string[];
     excludedMessageIds?: string[];
+    /** 已存在但被本轮选择排除的摘要：仍显示为未勾选块，方便用户重新选回 */
+    availableSummary?: string | null;
 }): ContextPreview;
 export type ContextPreviewSection = 'fixed' | 'compressedHistory' | 'dialogue';
 export declare function contextPreviewSection(block: ContextPreviewBlock): ContextPreviewSection;
@@ -48,6 +50,8 @@ export declare function blocksFromWritingIntent(assembled: AssembleWritingIntent
     historyMessageIds?: string[];
     excludedMessageIds?: string[];
     excludedBlockIds?: string[];
+    /** 已存在但被本轮选择排除的摘要：仍显示为未勾选块，方便用户重新选回 */
+    availableSummary?: string | null;
 }): ContextPreview;
 export declare function filterHistoryTurns<T extends {
     role: string;

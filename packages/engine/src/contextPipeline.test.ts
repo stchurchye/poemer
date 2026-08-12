@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   prepareChatContext,
+  compactChatSession,
   commitPreparedChatContext,
   commitPreparedWritingContext,
   prepareWritingIntentContext,
@@ -125,6 +126,76 @@ test('prepareChatContext: 不触发压缩时无 pendingContextCommit', async () 
   assert.equal(prepared.pendingContextCommit, undefined);
 });
 
+test('prepareChatContext: 用户排除既有摘要时，本轮不发送摘要且不改写持久锚点', async () => {
+  const withSummary: ChatSession = {
+    ...session,
+    contextSummary: '不应发送的既有摘要',
+    contextSummaryUpToMessageId: 'm1',
+  };
+  const { store, updateCalls } = makeStore(withSummary, bigMsgs(4));
+
+  const prepared = await prepareChatContext({
+    store,
+    model: compactModel,
+    sessionId: 's1',
+    pendingUser: '只看新消息',
+    contextSelection: { excludedBlockIds: ['summary-1'] },
+    limitTokens: 300_000,
+  });
+
+  assert.ok(prepared.messages.every((message) => !message.content.includes('不应发送的既有摘要')));
+  assert.equal(prepared.pendingContextCommit, undefined);
+  commitPreparedChatContext(store, 's1', prepared);
+  assert.equal(updateCalls.length, 0);
+});
+
+test('compactChatSession: 压缩返回空串时不推进锚点', async () => {
+  const { store, updateCalls, current } = makeStore(session, bigMsgs(4));
+  const emptyModel: ModelClient = {
+    async complete() {
+      return { text: '   ' };
+    },
+  };
+
+  const result = await compactChatSession({
+    store,
+    model: emptyModel,
+    sessionId: 's1',
+  });
+
+  assert.equal(updateCalls.length, 0, '空摘要不能写入 store');
+  assert.equal(current().contextSummaryUpToMessageId, null, '锚点必须保持不变');
+  assert.match(result.confirmation, /保留/);
+});
+
+test('prepareChatContext: 排除的消息不送入压缩模型，也不持久推进锚点', async () => {
+  const messages = bigMsgs(12);
+  messages[1] = { ...messages[1], content: '绝不能送进模型的私密内容' };
+  const seen: string[] = [];
+  const recordingModel: ModelClient = {
+    async complete(input) {
+      seen.push(input.messages.map((message) => message.content).join('\n'));
+      return { text: '【摘要】其余历史' };
+    },
+  };
+  const { store, updateCalls } = makeStore(session, messages);
+
+  const prepared = await prepareChatContext({
+    store,
+    model: recordingModel,
+    sessionId: 's1',
+    pendingUser: '继续',
+    contextSelection: { excludedMessageIds: ['m1'] },
+    limitTokens: 3000,
+  });
+
+  assert.ok(seen.length > 0, '测试前提：应触发压缩');
+  assert.ok(seen.every((input) => !input.includes('绝不能送进模型的私密内容')));
+  assert.equal(prepared.pendingContextCommit, undefined, '筛选后的临时摘要不能持久化');
+  commitPreparedChatContext(store, 's1', prepared);
+  assert.equal(updateCalls.length, 0, '不能用单一锚点跨过被排除消息');
+});
+
 // ---- B2：ratio 达阈值但历史仍装得下时，也预防式压缩最老轮 ----
 
 test('prepareChatContext: 高占用但未溢出时仍预防式压缩（不再一进循环就 break）', async () => {
@@ -203,6 +274,161 @@ test('prepareWritingIntentContext: 触发压缩时不写 store，commit 后才�
 
   commitPreparedWritingContext(store, 'd1', prepared);
   assert.equal(updates.length, 1, '提交时才写一次');
+});
+
+test('prepareWritingIntentContext: 排除消息时只做本轮压缩，不持久推进锚点', async () => {
+  const doc: Document = {
+    id: 'd2',
+    title: '回忆录',
+    chapters: [{ id: 'c1', title: '第一章', order: 0, blocks: [{ id: 'b1', content: '正文' }] }],
+    globalSummary: '',
+    styleGuide: '',
+    currentRevisionId: null,
+    revisionCount: 0,
+    updatedAt: '0',
+    createdAt: '0',
+    writingContextSummary: null,
+    writingContextSummaryUpToMessageId: null,
+  } as Document;
+  const messages: WritingAssistantMessage[] = bigMsgs(12).map((message, index) => ({
+    id: `w${index}`,
+    documentId: 'd2',
+    role: message.role,
+    content: index === 1 ? '写作侧私密内容' : message.content,
+    kind: 'chat',
+    createdAt: String(index),
+  }));
+  const seen: string[] = [];
+  const updates: unknown[] = [];
+  const store: ContextStoreAdapter = {
+    getChatSession: () => undefined,
+    getChatMessages: () => [],
+    updateChatSessionContext: () => undefined,
+    getDocument: () => doc,
+    getWritingAssistantMessages: () => messages,
+    updateDocumentContextFields: (_id, fields) => {
+      updates.push(fields);
+      return { ...doc, ...fields };
+    },
+  };
+  const model: ModelClient = {
+    async complete(input) {
+      seen.push(input.messages.map((message) => message.content).join('\n'));
+      return { text: '【摘要】其余写作对话' };
+    },
+  };
+
+  const prepared = await prepareWritingIntentContext({
+    store,
+    model,
+    documentId: 'd2',
+    document: doc,
+    allMessages: messages,
+    chapterBlock: '当前章',
+    documentBlock: '',
+    userMessage: '继续',
+    contextSelection: { excludedMessageIds: ['w1'] },
+    limitTokens: 3000,
+  });
+
+  assert.ok(seen.length > 0, '测试前提：应触发压缩');
+  assert.ok(seen.every((input) => !input.includes('写作侧私密内容')));
+  assert.equal(prepared.pendingWritingContextCommit, undefined);
+  commitPreparedWritingContext(store, 'd2', prepared);
+  assert.equal(updates.length, 0);
+});
+
+test('prepareWritingIntentContext: 全篇摘要有效时立即缓存，避免双 prepare 重算后丢失', async () => {
+  const doc: Document = {
+    id: 'd3',
+    title: '长篇',
+    chapters: [{ id: 'c1', title: '第一章', order: 0, blocks: [{ id: 'b1', content: '正文' }] }],
+    globalSummary: '',
+    styleGuide: '',
+    currentRevisionId: null,
+    revisionCount: 0,
+    updatedAt: '0',
+    createdAt: '0',
+    documentContextSummary: null,
+  } as Document;
+  const updates: Array<Record<string, unknown>> = [];
+  const store: ContextStoreAdapter = {
+    getChatSession: () => undefined,
+    getChatMessages: () => [],
+    updateChatSessionContext: () => undefined,
+    getDocument: () => doc,
+    getWritingAssistantMessages: () => [],
+    updateDocumentContextFields: (_id, fields) => {
+      updates.push(fields);
+      return { ...doc, ...fields };
+    },
+  };
+  const model: ModelClient = {
+    async complete() {
+      return { text: '有效的全篇摘要' };
+    },
+  };
+
+  const prepared = await prepareWritingIntentContext({
+    store,
+    model,
+    documentId: 'd3',
+    document: doc,
+    allMessages: [],
+    chapterBlock: '当前章',
+    documentBlock: '长篇正文'.repeat(3000),
+    userMessage: '继续',
+    limitTokens: 4000,
+  });
+
+  assert.ok(updates.some((fields) => fields.documentContextSummary === '有效的全篇摘要'));
+  assert.equal(
+    prepared.pendingWritingContextCommit?.documentContextSummary,
+    undefined,
+    '无锚点的文档缓存不应依赖后续聊天提交',
+  );
+});
+
+test('prepareWritingIntentContext: 全篇摘要为空时不缓存', async () => {
+  const doc: Document = {
+    id: 'd4',
+    title: '长篇',
+    chapters: [{ id: 'c1', title: '第一章', order: 0, blocks: [{ id: 'b1', content: '正文' }] }],
+    globalSummary: '',
+    styleGuide: '',
+    currentRevisionId: null,
+    revisionCount: 0,
+    updatedAt: '0',
+    createdAt: '0',
+    documentContextSummary: null,
+  } as Document;
+  const updates: unknown[] = [];
+  const store: ContextStoreAdapter = {
+    getChatSession: () => undefined,
+    getChatMessages: () => [],
+    updateChatSessionContext: () => undefined,
+    getDocument: () => doc,
+    getWritingAssistantMessages: () => [],
+    updateDocumentContextFields: (_id, fields) => {
+      updates.push(fields);
+      return doc;
+    },
+  };
+  const emptyModel: ModelClient = { async complete() { return { text: '   ' }; } };
+
+  await prepareWritingIntentContext({
+    store,
+    model: emptyModel,
+    documentId: 'd4',
+    document: doc,
+    allMessages: [],
+    chapterBlock: '当前章',
+    documentBlock: '长篇正文'.repeat(3000),
+    userMessage: '继续',
+    limitTokens: 4000,
+  });
+
+  assert.equal(updates.length, 0);
 });
 
 // ---- C2：改稿执行把用户指令放进 pinned 段，正文超长也不丢 ----

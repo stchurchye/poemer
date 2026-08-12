@@ -50,6 +50,7 @@ import {
 import {
   ErrorCodes,
   REPLY_DIALECT_HEADER,
+  DEEPSEEK_MODEL_PRO,
   assistantWelcomeLine,
   assistantRevisionReadyLine,
   buildWritingAssistantContextBlocks,
@@ -487,24 +488,6 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
     referenceScope: 'document',
   });
 
-  let prepared;
-  try {
-    prepared = await prepareWritingIntentContext({
-      apiKey,
-      documentId,
-      document: doc,
-      allMessages: getWritingAssistantMessages(documentId),
-      chapterBlock,
-      documentBlock,
-      userMessage: content,
-      dialect,
-      contextSelection,
-      referenceScope: 'document',
-    });
-  } catch (e) {
-    return handleAiError(c, e);
-  }
-
   const source = body.source === 'voice' ? 'voice' : 'text';
   const directChatScope =
     body.referenceScope === 'chapter' ? 'chapter' : 'document';
@@ -527,7 +510,7 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
       chatPrepared = await prepareWritingChatContext({
         apiKey,
         documentId,
-        document: prepared.document,
+        document: doc,
         allMessages: getWritingAssistantMessages(documentId),
         chapterBlock: scopedBlocks.chapterBlock,
         documentBlock: scopedBlocks.documentBlock,
@@ -579,6 +562,24 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
     });
   }
 
+  let prepared;
+  try {
+    prepared = await prepareWritingIntentContext({
+      apiKey,
+      documentId,
+      document: doc,
+      allMessages: getWritingAssistantMessages(documentId),
+      chapterBlock,
+      documentBlock,
+      userMessage: content,
+      dialect,
+      contextSelection,
+      referenceScope: 'document',
+    });
+  } catch (e) {
+    return handleAiError(c, e);
+  }
+
   let intent;
   try {
     intent = await deepseekWritingIntentFromMessages(apiKey, prepared.messages);
@@ -597,6 +598,7 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
   });
 
   if (intent.mode === 'guide' && intent.guide) {
+    commitPreparedWritingContext(documentId, prepared);
     return c.json({
       ok: true,
       data: {
@@ -635,10 +637,12 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
   };
 
   if (intent.mode === 'revise' && intent.ready) {
+    commitPreparedWritingContext(documentId, prepared);
     return c.json({ ok: true, data: basePayload, requestId: c.get('requestId') });
   }
 
   if (intent.mode === 'revise' && !intent.ready) {
+    commitPreparedWritingContext(documentId, prepared);
     return c.json({
       ok: true,
       data: {
@@ -667,6 +671,7 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
 
   if (!intent.ready && intent.displayText.trim()) {
     const { userMsg, assistantMsg, chatReply } = persistChatExchange(intent.displayText);
+    commitPreparedWritingContext(documentId, prepared);
     return c.json({
       ok: true,
       data: {
@@ -708,6 +713,7 @@ documentsRouter.post('/:id/assistant/intent', async (c) => {
 
   const { userMsg, assistantMsg } = persistChatExchange(chatReply);
   // 修 review#1：回复+消息成功入库后才提交写作侧压缩产物
+  commitPreparedWritingContext(documentId, prepared);
   commitPreparedWritingContext(documentId, chatPrepared);
   return c.json({
     ok: true,
@@ -847,6 +853,7 @@ documentsRouter.post('/:id/assistant/confirm', async (c) => {
     understandingScope,
     documentExcerpt: body.documentExcerpt?.trim(),
     documentContextSummary: doc.documentContextSummary,
+    modelId: DEEPSEEK_MODEL_PRO,
   });
 
   let suggested: string;

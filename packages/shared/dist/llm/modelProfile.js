@@ -14,6 +14,11 @@ const MODEL_PROFILES = {
         contextWindowTokens: 1_048_576,
         maxCompletionTokens: 65_536,
     },
+    'deepseek-v4-pro': {
+        id: 'deepseek-v4-pro',
+        contextWindowTokens: 1_000_000,
+        maxCompletionTokens: 8_192,
+    },
 };
 /** 未知模型的保守兜底：取较小窗口，避免乐观放行导致上游超限 */
 export const DEFAULT_MODEL_PROFILE = {

@@ -1,5 +1,5 @@
 import type { ContextSelection, ContextPreview, ContextUsage, ReplyDialect } from '@shiren/shared';
-import { ZENMUX_MODEL_CHAT } from '@shiren/shared';
+import { DEEPSEEK_MODEL_PRO, ZENMUX_MODEL_CHAT } from '@shiren/shared';
 import {
   prepareChatContext as enginePrepareChatContext,
   commitPreparedChatContext as engineCommitPreparedChatContext,
@@ -120,6 +120,7 @@ export async function prepareWritingIntentContext(
     store: storeAdapter,
     model: modelFromApiKey(apiKey),
     ...rest,
+    modelId: DEEPSEEK_MODEL_PRO,
   });
 }
 
@@ -134,6 +135,7 @@ export async function prepareWritingChatContext(
     store: storeAdapter,
     model: modelFromApiKey(apiKey),
     ...rest,
+    modelId: DEEPSEEK_MODEL_PRO,
   });
 }
 
@@ -148,13 +150,19 @@ export function commitPreparedWritingContext(
 export async function previewWritingIntentContextPreview(
   params: Parameters<typeof enginePreviewWritingIntentContextPreview>[0],
 ): Promise<ContextPreview> {
-  return enginePreviewWritingIntentContextPreview(params);
+  return enginePreviewWritingIntentContextPreview({
+    ...params,
+    modelId: DEEPSEEK_MODEL_PRO,
+  });
 }
 
 export async function previewWritingIntentContextUsage(
   params: Parameters<typeof enginePreviewWritingIntentContextUsage>[0],
 ): Promise<ContextUsage> {
-  return enginePreviewWritingIntentContextUsage(params);
+  return enginePreviewWritingIntentContextUsage({
+    ...params,
+    modelId: DEEPSEEK_MODEL_PRO,
+  });
 }
 
 export { enginePrepareWritingExecuteContext as prepareWritingExecuteContext };
