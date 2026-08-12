@@ -1,8 +1,13 @@
 import {
   ACTION_PROMPTS,
+  assembleWritingExecuteContext,
   ensureWritingExecuteBasis,
+  estimateTokens,
+  getContextWindowTokens,
+  getOutputReserveTokens,
   hasWritingExecuteBasis,
   parseWritingExecuteResponse,
+  trimTextToTokenBudgetTail,
   WRITING_EXECUTE_BASIS_ONLY_PROMPT,
   WRITING_EXECUTE_OUTPUT_RULES,
   WRITING_RETRY_PROMPT,
@@ -89,6 +94,7 @@ export async function runWritingExecute(params: {
   understandingScope?: 'chapter' | 'document';
   documentExcerpt?: string;
   documentContextSummary?: string | null;
+  modelId?: string | null;
 }): Promise<{
   text: string;
   comment: string;
@@ -105,6 +111,7 @@ export async function runWritingExecute(params: {
     understandingScope: params.understandingScope,
     documentExcerpt: params.documentExcerpt,
     documentContextSummary: params.documentContextSummary,
+    modelId: params.modelId,
   });
 
   const parsed = await completeWritingExecute(params.model, messages, {
@@ -136,6 +143,9 @@ export async function runWritingExecuteRetry(params: {
   priorFeedback?: string[];
   styleGuide?: string;
   dialect?: ReplyDialect;
+  limitTokens?: number;
+  outputReserve?: number;
+  modelId?: string | null;
 }): Promise<{ text: string; comment: string; basis: WritingExecuteBasis }> {
   const actionPrompt = ACTION_PROMPTS[params.action] ?? ACTION_PROMPTS['润色'];
   const isContinue = params.action === '续写';
@@ -154,23 +164,50 @@ ${WRITING_EXECUTE_OUTPUT_RULES}`;
     .map((line, i) => `${i + 1}. ${line.trim()}`)
     .join('\n');
 
-  const userParts = [
+  // 修 C1：重试也走预算截断。用户本轮意见/初次要求/风格是 pinned（永不截）；
+  // 原文、上一版改稿、历次意见是 trimmable（长文多轮时优先在这里裁），避免顶爆窗口。
+  const basePinned = [
     params.styleGuide ? `写作风格：${params.styleGuide}` : '',
-    `原文：\n${params.oldText || '（空）'}`,
     params.baseInstruction.trim()
       ? `初次改稿要求：\n${params.baseInstruction.trim()}`
       : '',
-    `小助手上一版改稿：\n${params.previousSuggestion}`,
-    priorLines ? `历次补充意见：\n${priorLines}` : '',
     `用户本轮补充意见：\n${params.additionalFeedback.trim()}`,
   ].filter(Boolean);
 
+  let pinnedParts: string[];
+  let trimmableParts: string[];
+  if (isContinue) {
+    // 修 review#4：续写要接着「上一版改稿」的【末尾】写。trimmable 走保头裁尾会把续写点裁没，
+    // 故把上一版作为续写基准裁头留尾后 pin 住（assemble 不再动它）；原文与之高度冗余，丢弃。
+    const limit = params.limitTokens ?? getContextWindowTokens(params.modelId);
+    const reserve = params.outputReserve ?? getOutputReserveTokens();
+    const overhead =
+      estimateTokens(system) + estimateTokens(basePinned.join('\n\n')) + estimateTokens(priorLines);
+    const contBudget = Math.max(500, limit - reserve - overhead - 300);
+    const base = trimTextToTokenBudgetTail(params.previousSuggestion, contBudget);
+    pinnedParts = [...basePinned, `小助手上一版改稿（请从它的末尾继续写）：\n${base}`];
+    trimmableParts = [priorLines ? `历次补充意见：\n${priorLines}` : ''].filter(Boolean);
+  } else {
+    pinnedParts = basePinned;
+    trimmableParts = [
+      `原文：\n${params.oldText || '（空）'}`,
+      `小助手上一版改稿：\n${params.previousSuggestion}`,
+      priorLines ? `历次补充意见：\n${priorLines}` : '',
+    ].filter(Boolean);
+  }
+
+  const { messages } = assembleWritingExecuteContext({
+    systemPrompt: system,
+    pinnedParts,
+    trimmableParts,
+    limitTokens: params.limitTokens,
+    outputReserve: params.outputReserve,
+    modelId: params.modelId,
+  });
+
   const parsed = await completeWritingExecute(
     params.model,
-    [
-      { role: 'system', content: system },
-      { role: 'user', content: userParts.join('\n\n') },
-    ],
+    messages,
     {
       action: params.action,
       oldText: params.oldText,

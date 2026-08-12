@@ -30,8 +30,15 @@ const MAX_CHAPTER_CONTENT = 3000;
 const MIN_OTHER_CHAPTER_CHARS = 400;
 export const WRITING_CHAPTER_ONLY_SCOPE_NOTE = '（用户要求仅根据本章理解，已省略其它章节正文）';
 export const WRITING_FULL_ARTICLE_BLOCK_PREFIX = '整篇文章按章列出（供理解；评价与改稿仍只针对「当前待改章节」）：';
-/** 按 order 格式化每一章，当前章在全文 excerpt 中标注 */
-export function formatArticleChaptersForLlm(doc, activeChapterId) {
+const FOLDED_CHAPTER_NOTE = '（此章较长，已折叠；如需针对它改稿请切换到该章）';
+/**
+ * 按 order 格式化每一章，当前章在全文 excerpt 中标注。
+ *
+ * 修 A3：超过 MAX_DOCUMENT_EXCERPT 后，尾章不再整章静默丢弃，而是降级为「标题占位」，
+ * 保证每一章的标题都出现在上下文里；被折叠章节的正文通过可选的 `foldedOut` 收集返回，
+ * 供上层触发全篇摘要兜底（R-NoSilentLoss）。当前待改章永远优先保留正文。
+ */
+export function formatArticleChaptersForLlm(doc, activeChapterId, foldedOut) {
     const chapters = [...doc.chapters].sort((a, b) => a.order - b.order);
     if (chapters.length === 0)
         return '';
@@ -52,15 +59,24 @@ export function formatArticleChaptersForLlm(doc, activeChapterId) {
             body = `${text.slice(0, MIN_OTHER_CHAPTER_CHARS * 3)}\n…（以下省略）`;
         }
         const segment = `${header}\n${body}`;
-        if (totalLen + segment.length > MAX_DOCUMENT_EXCERPT) {
-            if (isActive) {
-                const room = Math.max(500, MAX_DOCUMENT_EXCERPT - totalLen - header.length - 2);
-                parts.push(`${header}\n${text.slice(0, room)}`);
-            }
-            break;
+        // 修 review#5：不 latch——只要还装得下就继续装（靠后的小章不会因前面某大章溢出而被迫占位）；
+        // 装不下的章：当前待改章尽量保正文，其它章降级为标题占位（不再整章静默消失）。
+        if (totalLen + segment.length <= MAX_DOCUMENT_EXCERPT) {
+            parts.push(segment);
+            totalLen += segment.length + 2;
+            continue;
         }
-        parts.push(segment);
-        totalLen += segment.length + 2;
+        if (isActive) {
+            const room = Math.max(500, MAX_DOCUMENT_EXCERPT - totalLen - header.length - 2);
+            parts.push(`${header}\n${text.slice(0, room)}`);
+            totalLen += header.length + Math.min(room, text.length) + 2;
+        }
+        else {
+            const placeholder = `${header}\n${FOLDED_CHAPTER_NOTE}`;
+            parts.push(placeholder);
+            totalLen += placeholder.length + 2;
+            foldedOut?.push(`${header}\n${text}`);
+        }
     }
     return parts.join('\n\n');
 }

@@ -1,4 +1,4 @@
-import { SUMMARY_PREFIX, estimateTokens } from './contextBudget.js';
+import { SUMMARY_PREFIX, estimateTokens, formatContextSummaryText, } from './contextBudget.js';
 export function usesExclusionMode(selection) {
     if (!selection)
         return false;
@@ -9,6 +9,21 @@ export function contextSelectionWithServerMarks(_allMessages, contextSelection) 
 }
 function blockId(prefix, index) {
     return `${prefix}-${index}`;
+}
+/** 组装结果里真正 fitted 的逐字历史条数（排除 system / 摘要 / 末条 pendingUser） */
+function countFittedHistory(messages) {
+    let count = 0;
+    for (let i = 0; i < messages.length; i++) {
+        const msg = messages[i];
+        if (msg.role === 'system')
+            continue;
+        if (msg.role === 'user' && msg.content.startsWith(SUMMARY_PREFIX))
+            continue;
+        if (i === messages.length - 1)
+            continue; // pendingUser
+        count += 1;
+    }
+    return count;
 }
 export function formatMessagesAsMarkdown(messages) {
     return messages
@@ -80,17 +95,21 @@ export function blocksFromAssembleChatResult(assembled, opts) {
         });
     }
     const summaryMsg = assembled.messages.find((m) => m.role === 'user' && m.content.startsWith(SUMMARY_PREFIX));
-    if (summaryMsg) {
+    const summaryContent = summaryMsg?.content || formatContextSummaryText(opts?.availableSummary);
+    if (summaryContent) {
         blocks.push({
             id: blockId('summary', idx++),
             kind: 'summary',
             label: '压缩后的历史',
-            content: summaryMsg.content,
-            tokens: estimateTokens(summaryMsg.content),
+            content: summaryContent,
+            tokens: estimateTokens(summaryContent),
             selectable: true,
-            selectedByDefault: true,
+            selectedByDefault: Boolean(summaryMsg),
         });
     }
+    // 修 C-Preview：fitted 历史是 historyMessageIds 的尾部；按偏移对齐，而非从 0 顺序取
+    const fittedHistoryCount = countFittedHistory(assembled.messages);
+    const idOffset = Math.max(0, (opts?.historyMessageIds?.length ?? 0) - fittedHistoryCount);
     let historyIdx = 0;
     for (const msg of assembled.messages) {
         if (msg.role === 'system')
@@ -99,10 +118,10 @@ export function blocksFromAssembleChatResult(assembled, opts) {
             continue;
         if (msg === assembled.messages[assembled.messages.length - 1])
             continue;
-        const messageId = opts?.historyMessageIds?.[historyIdx];
+        const messageId = opts?.historyMessageIds?.[idOffset + historyIdx];
         const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
         blocks.push({
-            id: blockId('history', idx++),
+            id: messageId ? `history-${messageId}` : blockId('history', idx),
             kind,
             label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
             content: msg.content,
@@ -112,6 +131,7 @@ export function blocksFromAssembleChatResult(assembled, opts) {
             messageId,
             role: msg.role,
         });
+        idx += 1;
         historyIdx += 1;
     }
     for (const turn of assembled.messagesToCompact) {
@@ -179,19 +199,21 @@ export function blocksFromWritingIntent(assembled, opts) {
         });
     }
     const summaryMsg = assembled.messages.find((m) => m.role === 'user' && m.content.startsWith(SUMMARY_PREFIX));
-    if (summaryMsg) {
+    const summaryContent = summaryMsg?.content || formatContextSummaryText(opts.availableSummary);
+    if (summaryContent) {
         blocks.push({
             id: blockId('summary', idx++),
             kind: 'summary',
             label: '压缩后的历史',
-            content: summaryMsg.content,
-            tokens: estimateTokens(summaryMsg.content),
+            content: summaryContent,
+            tokens: estimateTokens(summaryContent),
             selectable: true,
-            selectedByDefault: true,
+            selectedByDefault: Boolean(summaryMsg),
         });
     }
     if (opts.chapterBlock.trim()) {
-        const chapterId = blockId('chapter', idx++);
+        const chapterId = 'chapter';
+        idx += 1;
         blocks.push({
             id: chapterId,
             kind: 'document_chapter',
@@ -203,7 +225,8 @@ export function blocksFromWritingIntent(assembled, opts) {
         });
     }
     if (opts.documentBlock.trim()) {
-        const documentId = blockId('document', idx++);
+        const documentId = 'document';
+        idx += 1;
         blocks.push({
             id: documentId,
             kind: 'document_excerpt',
@@ -214,6 +237,8 @@ export function blocksFromWritingIntent(assembled, opts) {
             selectedByDefault: useBlockExclusion ? !excludedBlock.has(documentId) : true,
         });
     }
+    const fittedHistoryCount = countFittedHistory(assembled.messages);
+    const idOffset = Math.max(0, (opts.historyMessageIds?.length ?? 0) - fittedHistoryCount);
     let historyIdx = 0;
     for (const msg of assembled.messages) {
         if (msg.role === 'system')
@@ -223,9 +248,9 @@ export function blocksFromWritingIntent(assembled, opts) {
         if (msg === assembled.messages[assembled.messages.length - 1])
             continue;
         const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
-        const messageId = opts.historyMessageIds?.[historyIdx];
+        const messageId = opts.historyMessageIds?.[idOffset + historyIdx];
         blocks.push({
-            id: blockId('whist', idx++),
+            id: messageId ? `whist-${messageId}` : blockId('whist', idx),
             kind,
             label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
             content: msg.content,
@@ -235,6 +260,7 @@ export function blocksFromWritingIntent(assembled, opts) {
             messageId,
             role: msg.role,
         });
+        idx += 1;
         historyIdx += 1;
     }
     for (const turn of assembled.messagesToCompact) {

@@ -69,6 +69,10 @@ function chatHistoryAfterAnchor(
 ): ChatMessage[] {
   if (!upToMessageId) return messages;
   const idx = messages.findIndex((m) => m.id === upToMessageId);
+  // 修 review#6：锚点在原始消息里真的找不到（数据迁移/损坏、跨设备 id 不一致）时，回退为「全部」
+  // 而非空——宁可冗余重发已摘要内容，也绝不把活着的对话历史静默丢光。
+  // （B3 的写作侧「被 filter 剔除的锚点」问题已由 writingHistoryAfterAnchor 的 raw-first 定位解决，
+  //  chat 侧锚点是真实持久消息、正常不会 dangling，此回退仅在异常态触发。）
   return idx >= 0 ? messages.slice(idx + 1) : messages;
 }
 
@@ -83,17 +87,70 @@ function writingHistoryAfterAnchor(
   messages: WritingAssistantMessage[],
   upToMessageId: string | null | undefined,
 ): WritingAssistantMessage[] {
-  const filtered = filterWritingMessagesForContext(messages);
-  if (!upToMessageId) return filtered;
-  const idx = filtered.findIndex((m) => m.id === upToMessageId);
-  return idx >= 0 ? filtered.slice(idx + 1) : filtered;
+  // 修 B3：先在「未过滤的原始序列」里定位锚点（锚点可能正是被 filter 剔除的被拒轮，
+  // 若先过滤再找会 idx=-1 → 旧代码回退成全量重发）。定位后再做上下文过滤。
+  let afterAnchor = messages;
+  if (upToMessageId) {
+    const idx = messages.findIndex((m) => m.id === upToMessageId);
+    // 修 review#6：原始序列里真找不到（迁移/损坏）时回退全部而非空，宁可冗余也不静默丢历史
+    afterAnchor = idx >= 0 ? messages.slice(idx + 1) : messages;
+  }
+  return filterWritingMessagesForContext(afterAnchor);
 }
+
+/**
+ * 单一「摘要锚点」只能表示原始消息的一段连续前缀。用户临时排除/点选过消息时，
+ * 压缩结果可以服务本轮，但不能持久化锚点，否则会跨过未进摘要的原话。
+ */
+function hasCustomHistoryFilter(selection?: ContextSelection | null): boolean {
+  return Boolean(
+    (selection?.excludedMessageIds?.length ?? 0) > 0 ||
+      (selection?.selectedMessageIds?.length ?? 0) > 0 ||
+      excludesSummary(selection),
+  );
+}
+
+function excludesSummary(selection?: ContextSelection | null): boolean {
+  return Boolean(
+    selection?.excludedBlockIds?.some((id) => id.startsWith('summary-')),
+  );
+}
+
+/** 压缩产物：由 prepareChatContext 决定、但只在模型回复成功后由调用方提交（修 A1） */
+export type PendingContextCommit = {
+  summary: string;
+  upToMessageId: string | null;
+};
 
 export type PreparedChatContext = {
   messages: ChatMessageInput[];
   usage: ContextUsage;
   session: ChatSession;
+  /** 有值表示本轮做了压缩；调用方需在回复+消息成功入库后调用 commitPreparedChatContext */
+  pendingContextCommit?: PendingContextCommit;
 };
+
+/**
+ * 修 A1：把「摘要+锚点落库」从 prepare 阶段挪到回复成功之后。
+ * 调用方在 addChatMessage(user+assistant) 成功后调用此函数一次；失败则永不调用，
+ * store 保持原样、原话可重发，绝不出现「锚点已推进但本轮原话没入库」的不可逆丢失。
+ */
+export function commitPreparedChatContext(
+  store: ContextStoreAdapter,
+  sessionId: string,
+  prepared: { pendingContextCommit?: PendingContextCommit },
+): void {
+  const commit = prepared.pendingContextCommit;
+  if (!commit) return;
+  store.updateChatSessionContext(sessionId, commit.summary, commit.upToMessageId);
+}
+
+/** 预防式压缩：占用达阈值但历史仍装得下时，折叠最老约 1/4 轮（成对，至少 2）来腾空间（修 B2） */
+function preventiveFoldCount(historyLen: number): number {
+  if (historyLen < 2) return 0;
+  const n = Math.max(2, Math.floor(historyLen / 4));
+  return Math.min(n, historyLen);
+}
 
 export async function prepareChatContext(params: {
   store: ContextStoreAdapter;
@@ -102,6 +159,9 @@ export async function prepareChatContext(params: {
   pendingUser: string;
   dialect?: ReplyDialect;
   contextSelection?: ContextSelection;
+  limitTokens?: number;
+  outputReserve?: number;
+  modelId?: string | null;
 }): Promise<PreparedChatContext> {
   const session = params.store.getChatSession(params.sessionId);
   if (!session) throw new Error('SESSION_NOT_FOUND');
@@ -111,49 +171,69 @@ export async function prepareChatContext(params: {
     allMessages,
     params.contextSelection,
   );
+  const customHistoryFilter = hasCustomHistoryFilter(effectiveSelection);
   const systemPrompt = chatPersonaForDialect(params.dialect);
 
-  let summary = session.contextSummary ?? null;
-  let upToId = session.contextSummaryUpToMessageId ?? null;
+  const summaryExcluded = excludesSummary(effectiveSelection);
+  let summary = summaryExcluded ? null : session.contextSummary ?? null;
+  let upToId = summaryExcluded ? null : session.contextSummaryUpToMessageId ?? null;
+  let didCompact = false;
+
+  const assembleOpts = {
+    limitTokens: params.limitTokens,
+    outputReserve: params.outputReserve,
+    modelId: params.modelId,
+  };
 
   for (let round = 0; round < MAX_COMPACT_ROUNDS; round++) {
-    const historyMsgs = applyContextSelection(
-      chatHistoryAfterAnchor(allMessages, upToId),
-      effectiveSelection,
-    );
-    const history = toTurns(historyMsgs);
+    const rawAfterAnchor = chatHistoryAfterAnchor(allMessages, upToId);
+    const historyMsgs = applyContextSelection(rawAfterAnchor, effectiveSelection);
     const assembled = assembleChatContext({
       systemPrompt,
       summary,
-      history,
+      history: toTurns(historyMsgs),
       pendingUser: params.pendingUser,
+      ...assembleOpts,
     });
 
-    if (!assembled.needsCompact && !shouldCompact(assembled.usage)) {
-      return {
-        messages: assembled.messages as ChatMessageInput[],
-        usage: {
-          ...assembled.usage,
-          compacted: Boolean(summary?.trim()),
-        },
-        session: params.store.getChatSession(params.sessionId)!,
-      };
-    }
+    if (!assembled.needsCompact && !shouldCompact(assembled.usage)) break;
 
-    const omitCount = assembled.messagesToCompact.length;
+    // 决定折叠多少条最老的（已过滤）历史
+    let omitCount = assembled.messagesToCompact.length;
+    if (omitCount === 0) {
+      // 修 B2：达阈值但没溢出 → 预防式折叠最老一小批，而不是一进循环就 break
+      omitCount = preventiveFoldCount(historyMsgs.length);
+    }
     if (omitCount === 0) break;
 
-    const toCompact = historyMsgs.slice(0, omitCount);
+    const filteredToFold = historyMsgs.slice(0, omitCount);
+    const lastFoldedId = filteredToFold[filteredToFold.length - 1]?.id;
+    if (!lastFoldedId) break;
+
+    // 无筛选时折叠原始连续前缀，锚点可安全持久化。存在筛选时绝不把被排除消息
+    // 偷偷送进摘要模型；摘要只服务本轮，最终不会持久化锚点。
+    const rawCut = rawAfterAnchor.findIndex((m) => m.id === lastFoldedId);
+    const rawToFold = customHistoryFilter
+      ? filteredToFold
+      : rawCut >= 0
+        ? rawAfterAnchor.slice(0, rawCut + 1)
+        : filteredToFold;
+
+    // 压缩 completion 上限保持安全默认（8192），不按回复模型放大——压缩模型可能是
+    // flash-lite / DeepSeek，其单次输出上限各异；modelId 只用于组装窗口，不传给压缩。
     const merged = await compactHistoryViaLlm({
       model: params.model,
-      messages: toTurns(toCompact),
+      messages: toTurns(rawToFold),
       existingSummary: summary,
       dialect: params.dialect,
     });
+    // 修 review#1（HIGH）：压缩模型返回空/纯空白（弱模型拒答、上游异常返回空而非抛错）时，
+    // 绝不推进锚点、绝不提交空摘要——否则被折叠的逐字对话会连同摘要一起消失（重新引入 A1 丢失）。
+    // 保留既有 summary/upToId 不动，被挤出的旧轮次留在 store 里，下次请求再试压缩。
+    if (!merged.trim()) break;
     summary = merged;
-    const lastId = toCompact[toCompact.length - 1]?.id ?? upToId;
-    upToId = lastId;
-    params.store.updateChatSessionContext(params.sessionId, summary, lastId);
+    upToId = rawToFold[rawToFold.length - 1]?.id ?? upToId;
+    didCompact = true;
   }
 
   const historyMsgs = applyContextSelection(
@@ -165,6 +245,7 @@ export async function prepareChatContext(params: {
     summary,
     history: toTurns(historyMsgs),
     pendingUser: params.pendingUser,
+    ...assembleOpts,
   });
 
   return {
@@ -174,6 +255,9 @@ export async function prepareChatContext(params: {
       compacted: Boolean(summary?.trim()),
     },
     session: params.store.getChatSession(params.sessionId)!,
+    pendingContextCommit: didCompact && !customHistoryFilter
+      ? { summary: summary ?? '', upToMessageId: upToId }
+      : undefined,
   };
 }
 
@@ -192,13 +276,17 @@ export async function previewChatContextPreview(params: {
     allMessages,
     params.contextSelection,
   );
+  const summaryExcluded = excludesSummary(effectiveSelection);
   const historyMsgs = applyContextSelection(
-    chatHistoryAfterAnchor(allMessages, session.contextSummaryUpToMessageId),
+    chatHistoryAfterAnchor(
+      allMessages,
+      summaryExcluded ? null : session.contextSummaryUpToMessageId,
+    ),
     effectiveSelection,
   );
   const assembled = assembleChatContext({
     systemPrompt: chatPersonaForDialect(params.dialect),
-    summary: session.contextSummary,
+    summary: summaryExcluded ? null : session.contextSummary,
     history: toTurns(historyMsgs),
     pendingUser: params.pendingUser?.trim() || '…',
   });
@@ -207,12 +295,15 @@ export async function previewChatContextPreview(params: {
     excludedMessageIds: usesExclusionMode(effectiveSelection)
       ? effectiveSelection!.excludedMessageIds
       : undefined,
+    availableSummary: summaryExcluded ? session.contextSummary : undefined,
   });
   return {
     ...preview,
     usage: {
       ...preview.usage,
-      compacted: Boolean(session.contextSummary?.trim()) || assembled.needsCompact,
+      compacted:
+        (!summaryExcluded && Boolean(session.contextSummary?.trim())) ||
+        assembled.needsCompact,
     },
   };
 }
@@ -247,14 +338,38 @@ export async function compactChatSession(params: {
     return { confirmation: '当前对话还没有可压缩的历史消息。', usage };
   }
 
-  const turns = toTurns(allMessages);
+  // 修 C-Dedup：只折叠锚点之后、尚未进摘要的消息，不把已并入 existingSummary 的旧消息重压一遍
+  const afterAnchor = chatHistoryAfterAnchor(
+    allMessages,
+    session.contextSummaryUpToMessageId,
+  );
+  // 修 review#6：锚点已到末尾（无新增未摘要消息）时直接短路，不再回退整段重压（否则把已进摘要的旧消息+旧摘要再压一遍，多花钱且摘要膨胀）
+  if (afterAnchor.length === 0) {
+    const usage = await previewChatContextUsage({
+      store: params.store,
+      sessionId: params.sessionId,
+      dialect: params.dialect,
+    });
+    return { confirmation: '对话已整理过，暂无新增可压缩的内容。', usage };
+  }
   const summary = await compactHistoryViaLlm({
     model: params.model,
-    messages: turns,
+    messages: toTurns(afterAnchor),
     existingSummary: session.contextSummary ?? null,
     dialect: params.dialect,
   });
-  const lastId = allMessages[allMessages.length - 1]?.id ?? null;
+  if (!summary.trim()) {
+    const usage = await previewChatContextUsage({
+      store: params.store,
+      sessionId: params.sessionId,
+      dialect: params.dialect,
+    });
+    return {
+      confirmation: '本次整理没有生成有效摘要，已保留原对话，请稍后再试。',
+      usage,
+    };
+  }
+  const lastId = afterAnchor[afterAnchor.length - 1]?.id ?? null;
   params.store.updateChatSessionContext(params.sessionId, summary, lastId);
 
   const usage = await previewChatContextUsage({
@@ -268,11 +383,34 @@ export async function compactChatSession(params: {
   };
 }
 
+/** 写作侧压缩产物：与问答侧 A1 同理，只在回复+消息成功入库后由调用方提交 */
+export type PendingWritingContextCommit = {
+  writingContextSummary?: string | null;
+  writingContextSummaryUpToMessageId?: string | null;
+  documentContextSummary?: string | null;
+};
+
 export type PreparedWritingIntentContext = {
   messages: ChatMessageInput[];
   usage: ContextUsage;
   document: Document;
+  /** 有值表示本轮做了压缩；调用方在写作消息成功入库后调用 commitPreparedWritingContext */
+  pendingWritingContextCommit?: PendingWritingContextCommit;
 };
+
+/**
+ * 修 review#1：写作侧与问答侧 A1 对齐——把「文档摘要+锚点落库」推迟到回复成功之后。
+ * 未提交时什么都不持久化：锚点不推进、原话不折进有损摘要，弱网失败下写作助手不会「突然失忆」。
+ */
+export function commitPreparedWritingContext(
+  store: ContextStoreAdapter,
+  documentId: string,
+  prepared: { pendingWritingContextCommit?: PendingWritingContextCommit },
+): void {
+  const commit = prepared.pendingWritingContextCommit;
+  if (!commit) return;
+  store.updateDocumentContextFields(documentId, commit);
+}
 
 type PrepareWritingSidebarContextParams = {
   store: ContextStoreAdapter;
@@ -287,6 +425,9 @@ type PrepareWritingSidebarContextParams = {
   contextSelection?: ContextSelection;
   systemPrompt?: string;
   referenceScope?: 'chapter' | 'document';
+  limitTokens?: number;
+  outputReserve?: number;
+  modelId?: string | null;
 };
 
 async function prepareWritingSidebarContext(
@@ -296,14 +437,25 @@ async function prepareWritingSidebarContext(
     params.allMessages,
     params.contextSelection,
   );
+  const customHistoryFilter = hasCustomHistoryFilter(effectiveSelection);
   const systemPrompt =
     params.systemPrompt ?? writingIntentPromptForDialect(params.dialect);
-  let summary = params.document.writingContextSummary ?? null;
-  let upToId = params.document.writingContextSummaryUpToMessageId ?? null;
+  const summaryExcluded = excludesSummary(effectiveSelection);
+  let summary = summaryExcluded ? null : params.document.writingContextSummary ?? null;
+  let upToId = summaryExcluded
+    ? null
+    : params.document.writingContextSummaryUpToMessageId ?? null;
   let doc = params.document;
+  let pending: PendingWritingContextCommit | null = null;
   let documentBlock =
     params.referenceScope === 'chapter' ? '' : params.documentBlock;
   let chapterBlock = params.chapterBlock;
+
+  const assembleOpts = {
+    limitTokens: params.limitTokens,
+    outputReserve: params.outputReserve,
+    modelId: params.modelId,
+  };
 
   const draftPreview = blocksFromWritingIntent(
     assembleWritingIntentContext({
@@ -313,6 +465,7 @@ async function prepareWritingSidebarContext(
       chapterBlock,
       documentBlock,
       userMessage: params.userMessage,
+      ...assembleOpts,
     }),
     { chapterBlock, documentBlock },
   );
@@ -333,6 +486,7 @@ async function prepareWritingSidebarContext(
       chapterBlock,
       documentBlock,
       userMessage: params.userMessage,
+      ...assembleOpts,
     });
 
     if (!assembled.needsCompact && !shouldCompact(assembled.usage)) {
@@ -344,35 +498,49 @@ async function prepareWritingSidebarContext(
             Boolean(summary?.trim()) || Boolean(doc.documentContextSummary?.trim()),
         },
         document: doc,
+        pendingWritingContextCommit: pending ?? undefined,
       };
     }
 
     const omitCount = assembled.messagesToCompact.length;
     if (omitCount > 0) {
       const toCompact = historyMsgs.slice(0, omitCount);
-      summary = await compactHistoryViaLlm({
+      const merged = await compactHistoryViaLlm({
         model: params.model,
         messages: toTurns(toCompact),
         existingSummary: summary,
         dialect: params.dialect,
       });
+      // 修 review#1（HIGH）：压缩返回空时不推进锚点、不落库，保留既有摘要，避免逐字历史丢成空摘要
+      if (!merged.trim()) break;
+      summary = merged;
       const lastId = toCompact[toCompact.length - 1]?.id ?? upToId;
       upToId = lastId;
-      doc =
-        params.store.updateDocumentContextFields(params.documentId, {
+      // 自定义消息筛选下，摘要只服务本轮，不能用单一锚点跨过未进摘要的消息。
+      if (!customHistoryFilter) {
+        pending = {
+          ...(pending ?? {}),
           writingContextSummary: summary,
           writingContextSummaryUpToMessageId: lastId,
-        }) ?? doc;
+        };
+      }
+      doc = {
+        ...doc,
+        writingContextSummary: summary,
+        writingContextSummaryUpToMessageId: lastId,
+      };
     } else if (documentBlock.length > 6000 && !doc.documentContextSummary?.trim()) {
       const compactDoc = await compactDocumentExcerptViaLlm({
         model: params.model,
         documentExcerpt: documentBlock,
         dialect: params.dialect,
       });
-      doc =
-        params.store.updateDocumentContextFields(params.documentId, {
-          documentContextSummary: compactDoc,
-        }) ?? doc;
+      if (!compactDoc.trim()) break;
+      // 文档摘要没有消息锚点，是可重复生成的缓存；立即保存，避免 intent/chat 双 prepare
+      // 只提交后一份 pending 时让前一次昂贵摘要白算。
+      doc = params.store.updateDocumentContextFields(params.documentId, {
+        documentContextSummary: compactDoc,
+      }) ?? { ...doc, documentContextSummary: compactDoc };
       documentBlock = `全篇摘要（供理解，勿改其它章）：\n${compactDoc}`;
     } else {
       break;
@@ -397,6 +565,7 @@ async function prepareWritingSidebarContext(
     chapterBlock,
     documentBlock: docBlock,
     userMessage: params.userMessage,
+    ...assembleOpts,
   });
 
   return {
@@ -409,6 +578,7 @@ async function prepareWritingSidebarContext(
         assembled.needsCompact,
     },
     document: doc,
+    pendingWritingContextCommit: pending ?? undefined,
   };
 }
 
@@ -438,15 +608,17 @@ export async function previewWritingIntentContextPreview(params: {
   pendingUser?: string;
   dialect?: ReplyDialect;
   contextSelection?: ContextSelection;
+  modelId?: string | null;
 }): Promise<ContextPreview> {
   const effectiveSelection = contextSelectionWithServerMarks(
     params.allMessages,
     params.contextSelection,
   );
+  const summaryExcluded = excludesSummary(effectiveSelection);
   const historyMsgs = applyContextSelection(
     writingHistoryAfterAnchor(
       params.allMessages,
-      params.document.writingContextSummaryUpToMessageId,
+      summaryExcluded ? null : params.document.writingContextSummaryUpToMessageId,
     ),
     effectiveSelection,
   );
@@ -458,11 +630,12 @@ export async function previewWritingIntentContextPreview(params: {
 
   const assembled = assembleWritingIntentContext({
     systemPrompt: writingIntentPromptForDialect(params.dialect),
-    summary: params.document.writingContextSummary,
+    summary: summaryExcluded ? null : params.document.writingContextSummary,
     history: toTurns(historyMsgs),
     chapterBlock: params.chapterBlock,
     documentBlock: docBlock,
     userMessage: params.pendingUser?.trim() || '…',
+    modelId: params.modelId,
   });
 
   const preview = blocksFromWritingIntent(assembled, {
@@ -474,6 +647,9 @@ export async function previewWritingIntentContextPreview(params: {
       : undefined,
     excludedBlockIds: usesExclusionMode(effectiveSelection)
       ? effectiveSelection!.excludedBlockIds
+      : undefined,
+    availableSummary: summaryExcluded
+      ? params.document.writingContextSummary
       : undefined,
   });
 
@@ -495,6 +671,7 @@ export async function previewWritingIntentContextUsage(params: {
   pendingUser?: string;
   dialect?: ReplyDialect;
   contextSelection?: ContextSelection;
+  modelId?: string | null;
 }): Promise<ContextUsage> {
   const preview = await previewWritingIntentContextPreview(params);
   return preview.usage;
@@ -510,6 +687,9 @@ export function prepareWritingExecuteContext(params: {
   understandingScope?: 'chapter' | 'document';
   documentExcerpt?: string;
   documentContextSummary?: string | null;
+  limitTokens?: number;
+  outputReserve?: number;
+  modelId?: string | null;
 }): { messages: ChatMessageInput[]; usage: ContextUsage } {
   const actionPrompt = ACTION_PROMPTS[params.action] ?? ACTION_PROMPTS['润色'];
   const isContinue = params.action === '续写';
@@ -534,20 +714,28 @@ ${WRITING_EXECUTE_OUTPUT_RULES}`;
         ? `全篇节选（仅供理解，勿改其它章）：\n${params.documentExcerpt.trim()}`
         : '';
 
-  const userParts = [
+  // 修 C2：把用户指令/风格/范围说明放进 pinned 段（永不被截），只在 trimmable 段（正文/全篇节选）里裁
+  const pinnedParts = [
     params.styleGuide ? `写作风格：${params.styleGuide}` : '',
     params.chapterTitle ? `待改本章：${params.chapterTitle}` : '',
     useFullDoc
       ? '理解范围：可参考下方全篇理解上下文，但输出只能替换待改本章正文。'
       : '理解范围：仅根据待改本章正文理解，不要引用其它章节内容来改写。',
+    params.instruction ? `用户补充：${params.instruction}` : '',
+  ].filter(Boolean);
+
+  const trimmableParts = [
     `待改本章正文：\n${params.oldText || '（空）'}`,
     docPart,
-    params.instruction ? `用户补充：${params.instruction}` : '',
   ].filter(Boolean);
 
   const { messages, usage } = assembleWritingExecuteContext({
     systemPrompt: system,
-    userParts,
+    pinnedParts,
+    trimmableParts,
+    limitTokens: params.limitTokens,
+    outputReserve: params.outputReserve,
+    modelId: params.modelId,
   });
 
   return { messages: messages as ChatMessageInput[], usage };

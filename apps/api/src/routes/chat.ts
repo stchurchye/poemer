@@ -9,6 +9,7 @@ import {
 } from '../lib/deepseek.js';
 import { getDeepSeekKey, handleAiError } from '../lib/ai-handler.js';
 import {
+  commitPreparedChatContext,
   compactChatSession,
   prepareChatContext,
   previewChatContextPreview,
@@ -310,6 +311,9 @@ chatRouter.post('/sessions/:id/messages', async (c) => {
 
   const userMsg = addChatMessage(sessionId, 'user', storedContent)!;
   const assistantMsg = addChatMessage(sessionId, 'assistant', reply)!;
+
+  // 修 A1：回复+两条消息成功入库后，才提交压缩摘要+锚点
+  commitPreparedChatContext(sessionId, prepared);
 
   let sessionTitle = prepared.session;
   try {

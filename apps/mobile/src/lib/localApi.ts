@@ -12,7 +12,9 @@ import type {
 import type { LocalStore } from '@shiren/shared';
 import {
   analyzeChatIntentLocal,
-  analyzeWritingIntentLocal,
+  analyzeWritingIntentMessagesLocal,
+  commitPreparedChatContext,
+  commitPreparedWritingContext,
   compactChatSession as compactChatSessionEngine,
   completeChatMessages,
   prepareChatContext,
@@ -365,6 +367,8 @@ export function createLocalApi(deps: {
           pendingUser: pendingForContext,
           dialect,
           contextSelection: body.contextSelection,
+          // 组装窗口按真实回复模型（gpt-5.4，272k）取；未接则回退保守默认
+          modelId: ZENMUX_MODEL_CHAT,
         });
 
         let reply: string;
@@ -407,6 +411,9 @@ export function createLocalApi(deps: {
         if (!user) notFound('CHAT_SESSION_NOT_FOUND');
         const assistant = store().addChatMessage(sessionId, 'assistant', reply);
         if (!assistant) notFound('CHAT_SESSION_NOT_FOUND');
+
+        // 修 A1：回复+两条消息成功入库后，才提交压缩摘要+锚点（失败则不提交，原话不丢）
+        commitPreparedChatContext(ctxStore, sessionId, prepared);
 
         let sessionOut = prepared.session;
         try {
@@ -517,13 +524,6 @@ export function createLocalApi(deps: {
     ) => {
       const source = payload.source === 'voice' ? 'voice' : 'text';
       const dialect = await getStoredDialect();
-      const history = store()
-        .getWritingAssistantMessages(documentId)
-        .filter((m) => m.kind === 'chat')
-        .map((m) => ({
-          role: m.role,
-          content: m.content,
-        }));
 
       const persistChatExchange = (assistantContent: string) => {
         const user = store().addWritingAssistantMessage({
@@ -572,9 +572,12 @@ export function createLocalApi(deps: {
             dialect,
             contextSelection: payload.contextSelection,
             referenceScope: scope,
+            modelId: DEEPSEEK_MODEL_PRO,
           });
           const chatReply = await completeChatMessages(writingM, prepared.messages);
           const { user, assistant } = persistChatExchange(chatReply);
+          // 修 review#1：回复+消息成功入库后才提交写作侧压缩产物
+          commitPreparedWritingContext(contextStoreAdapter(), documentId, prepared);
           return okWritingIntent(
             {
               mode: 'chat',
@@ -593,20 +596,46 @@ export function createLocalApi(deps: {
           );
         }
 
-        const intent = await analyzeWritingIntentLocal(await intentModel(), {
-          content: payload.content,
+        const doc = store().getDocument(documentId);
+        if (!doc) notFound('DOCUMENT_NOT_FOUND');
+        const intentBlocks = buildWritingAssistantContextBlocks({
           chapterTitle: payload.chapterTitle,
-          chapterContent: payload.chapterContent,
-          documentExcerpt: payload.documentExcerpt,
-          articleExcerpt: payload.articleExcerpt,
-          history,
-          dialect,
+          chapterContent:
+            payload.chapterContent ||
+            payload.articleExcerpt?.trim() ||
+            '（本章尚无正文）',
+          documentExcerpt: payload.documentExcerpt ?? '',
+          referenceScope: 'document',
         });
+        const intentPrepared = await prepareWritingIntentContext({
+          store: contextStoreAdapter(),
+          model: writingM,
+          documentId,
+          document: doc,
+          allMessages: store().getWritingAssistantMessages(documentId),
+          chapterBlock: intentBlocks.chapterBlock,
+          documentBlock: intentBlocks.documentBlock,
+          userMessage: payload.content,
+          dialect,
+          contextSelection: payload.contextSelection,
+          referenceScope: 'document',
+          modelId: DEEPSEEK_MODEL_PRO,
+        });
+        const intent = await analyzeWritingIntentMessagesLocal(
+          writingM,
+          intentPrepared.messages,
+          payload.content,
+        );
 
         const referenceScope =
           payload.referenceScope ?? intent.referenceScope ?? 'document';
 
         if (intent.mode === 'guide' && intent.guide) {
+          commitPreparedWritingContext(
+            contextStoreAdapter(),
+            documentId,
+            intentPrepared,
+          );
           return okWritingIntent({
             mode: 'guide',
             guide: intent.guide,
@@ -632,35 +661,20 @@ export function createLocalApi(deps: {
         };
 
         if (intent.mode === 'revise' && intent.ready) {
-          const doc = store().getDocument(documentId);
-          if (!doc) notFound('DOCUMENT_NOT_FOUND');
-          const scope = referenceScope;
-          const { chapterBlock, documentBlock } = buildWritingAssistantContextBlocks({
-            chapterTitle: payload.chapterTitle,
-            chapterContent:
-              payload.chapterContent ||
-              payload.articleExcerpt?.trim() ||
-              '（本章尚无正文）',
-            documentExcerpt: payload.documentExcerpt ?? '',
-            referenceScope: scope,
-          });
-          const prepared = await prepareWritingIntentContext({
-            store: contextStoreAdapter(),
-            model: writingM,
+          commitPreparedWritingContext(
+            contextStoreAdapter(),
             documentId,
-            document: doc,
-            allMessages: store().getWritingAssistantMessages(documentId),
-            chapterBlock,
-            documentBlock,
-            userMessage: payload.content,
-            dialect,
-            contextSelection: payload.contextSelection,
-            referenceScope: scope,
-          });
-          return okWritingIntent(base, prepared.usage);
+            intentPrepared,
+          );
+          return okWritingIntent(base, intentPrepared.usage);
         }
 
         if (intent.mode === 'revise' && !intent.ready) {
+          commitPreparedWritingContext(
+            contextStoreAdapter(),
+            documentId,
+            intentPrepared,
+          );
           return okWritingIntent({
             ...base,
             action: intent.action || '润色',
@@ -669,6 +683,11 @@ export function createLocalApi(deps: {
 
         if (!intent.ready && intent.displayText.trim()) {
           const { user, assistant, chatReply } = persistChatExchange(intent.displayText);
+          commitPreparedWritingContext(
+            contextStoreAdapter(),
+            documentId,
+            intentPrepared,
+          );
           return okWritingIntent({
             ...base,
             mode: 'chat',
@@ -680,8 +699,6 @@ export function createLocalApi(deps: {
           });
         }
 
-        const doc = store().getDocument(documentId);
-        if (!doc) notFound('DOCUMENT_NOT_FOUND');
         const scope = referenceScope;
         const { chapterBlock, documentBlock } = buildWritingAssistantContextBlocks({
           chapterTitle: payload.chapterTitle,
@@ -696,7 +713,7 @@ export function createLocalApi(deps: {
           store: contextStoreAdapter(),
           model: writingM,
           documentId,
-          document: doc,
+          document: intentPrepared.document,
           allMessages: store().getWritingAssistantMessages(documentId),
           chapterBlock,
           documentBlock,
@@ -704,9 +721,13 @@ export function createLocalApi(deps: {
           dialect,
           contextSelection: payload.contextSelection,
           referenceScope: scope,
+          modelId: DEEPSEEK_MODEL_PRO,
         });
         const chatReply = await completeChatMessages(writingM, prepared.messages);
         const { user, assistant } = persistChatExchange(chatReply);
+        // 修 review#1：回复+消息成功入库后才提交写作侧压缩产物
+        commitPreparedWritingContext(contextStoreAdapter(), documentId, intentPrepared);
+        commitPreparedWritingContext(contextStoreAdapter(), documentId, prepared);
         return okWritingIntent(
           {
             ...base,
@@ -827,6 +848,7 @@ export function createLocalApi(deps: {
           understandingScope,
           documentExcerpt: body.documentExcerpt?.trim(),
           documentContextSummary: doc.documentContextSummary,
+          modelId: DEEPSEEK_MODEL_PRO,
         });
 
         const revision = store().createRevision({
@@ -914,6 +936,7 @@ export function createLocalApi(deps: {
             priorFeedback: options.retry.priorFeedback,
             styleGuide: doc.styleGuide,
             dialect,
+            modelId: DEEPSEEK_MODEL_PRO,
           });
           text = result.text;
           comment = result.comment;
@@ -927,6 +950,7 @@ export function createLocalApi(deps: {
             styleGuide: doc.styleGuide,
             dialect,
             chapterTitle: found.chapter.title,
+            modelId: DEEPSEEK_MODEL_PRO,
           });
           text = executed.text;
           comment = executed.comment;
@@ -996,6 +1020,7 @@ export function createLocalApi(deps: {
           pendingUser: params.pending,
           dialect,
           contextSelection: params.contextSelection,
+          modelId: DEEPSEEK_MODEL_PRO,
         });
         return ok(usage);
       } catch (e) {
@@ -1031,6 +1056,7 @@ export function createLocalApi(deps: {
           pendingUser: params.pending,
           dialect,
           contextSelection: params.contextSelection,
+          modelId: DEEPSEEK_MODEL_PRO,
         });
         return ok(preview);
       } catch (e) {

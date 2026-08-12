@@ -1,6 +1,9 @@
 import type { ContextSelection, ContextPreview, ContextUsage, ReplyDialect } from '@shiren/shared';
+import { DEEPSEEK_MODEL_PRO, ZENMUX_MODEL_CHAT } from '@shiren/shared';
 import {
   prepareChatContext as enginePrepareChatContext,
+  commitPreparedChatContext as engineCommitPreparedChatContext,
+  commitPreparedWritingContext as engineCommitPreparedWritingContext,
   previewChatContextPreview as enginePreviewChatContextPreview,
   previewChatContextUsage as enginePreviewChatContextUsage,
   compactChatSession as engineCompactChatSession,
@@ -62,7 +65,17 @@ export async function prepareChatContext(params: {
     pendingUser: params.pendingUser,
     dialect: params.dialect,
     contextSelection: params.contextSelection,
+    // 组装窗口按真实回复模型（gpt-5.4，272k）取
+    modelId: ZENMUX_MODEL_CHAT,
   });
+}
+
+/** 修 A1：回复+消息成功入库后再提交压缩摘要+锚点（失败则不提交，原话不丢） */
+export function commitPreparedChatContext(
+  sessionId: string,
+  prepared: PreparedChatContext,
+): void {
+  engineCommitPreparedChatContext(storeAdapter, sessionId, prepared);
 }
 
 export async function previewChatContextPreview(params: {
@@ -107,6 +120,7 @@ export async function prepareWritingIntentContext(
     store: storeAdapter,
     model: modelFromApiKey(apiKey),
     ...rest,
+    modelId: DEEPSEEK_MODEL_PRO,
   });
 }
 
@@ -121,19 +135,34 @@ export async function prepareWritingChatContext(
     store: storeAdapter,
     model: modelFromApiKey(apiKey),
     ...rest,
+    modelId: DEEPSEEK_MODEL_PRO,
   });
+}
+
+/** 修 review#1：写作侧压缩产物在写作消息成功入库后提交 */
+export function commitPreparedWritingContext(
+  documentId: string,
+  prepared: PreparedWritingIntentContext,
+): void {
+  engineCommitPreparedWritingContext(storeAdapter, documentId, prepared);
 }
 
 export async function previewWritingIntentContextPreview(
   params: Parameters<typeof enginePreviewWritingIntentContextPreview>[0],
 ): Promise<ContextPreview> {
-  return enginePreviewWritingIntentContextPreview(params);
+  return enginePreviewWritingIntentContextPreview({
+    ...params,
+    modelId: DEEPSEEK_MODEL_PRO,
+  });
 }
 
 export async function previewWritingIntentContextUsage(
   params: Parameters<typeof enginePreviewWritingIntentContextUsage>[0],
 ): Promise<ContextUsage> {
-  return enginePreviewWritingIntentContextUsage(params);
+  return enginePreviewWritingIntentContextUsage({
+    ...params,
+    modelId: DEEPSEEK_MODEL_PRO,
+  });
 }
 
 export { enginePrepareWritingExecuteContext as prepareWritingExecuteContext };
