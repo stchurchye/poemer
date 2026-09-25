@@ -127,7 +127,7 @@ export function saveDocumentContent(
       blocks: ch.blocks.map((b) => (b.id === blockId ? { ...b, content } : b)),
     };
   });
-  return updateDocument(documentId, { chapters, documentContextSummary: null });
+  return updateDocument(documentId, { chapters });
 }
 
 const MAX_CHAPTERS = 50;
@@ -140,7 +140,7 @@ export function addChapter(documentId: string, title?: string): Document | undef
   const nextIndex = doc.chapters.length;
   const chapterTitle = title?.trim() || formatChapterTitle(nextIndex);
   const chapters = [...doc.chapters, emptyChapter(nextIndex, chapterTitle)];
-  return updateDocument(documentId, { chapters, documentContextSummary: null });
+  return updateDocument(documentId, { chapters });
 }
 
 function applyRevisionToDocument(rev: Revision) {

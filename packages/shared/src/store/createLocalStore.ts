@@ -172,7 +172,7 @@ export function createLocalStore(
         blocks: ch.blocks.map((b) => (b.id === blockId ? { ...b, content } : b)),
       };
     });
-    return updateDocument(documentId, { chapters, documentContextSummary: null });
+    return updateDocument(documentId, { chapters });
   }
 
   function updateChapterTitle(
@@ -188,7 +188,7 @@ export function createLocalStore(
     const chapters = doc.chapters.map((ch) =>
       ch.id === chapterId ? { ...ch, title } : ch,
     );
-    return updateDocument(documentId, { chapters, documentContextSummary: null });
+    return updateDocument(documentId, { chapters });
   }
 
   function addChapter(documentId: string, title?: string): Document | undefined {
@@ -199,7 +199,7 @@ export function createLocalStore(
     const nextIndex = doc.chapters.length;
     const chapterTitle = title?.trim() || formatChapterTitle(nextIndex);
     const chapters = [...doc.chapters, emptyChapter(uuid, nextIndex, chapterTitle)];
-    return updateDocument(documentId, { chapters, documentContextSummary: null });
+    return updateDocument(documentId, { chapters });
   }
 
   function applyRevisionToDocument(rev: Revision) {
