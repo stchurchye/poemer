@@ -30,6 +30,7 @@ export const ESTIMATE_CHARS_PER_TOKEN = 1.6;
 /** 语言感知计量：CJK 每字约 0.75 token（比旧 0.625 保守）；其它字符约 0.25 token（≈4 字符/token） */
 export const CJK_TOKENS_PER_CHAR = 0.75;
 export const OTHER_TOKENS_PER_CHAR = 0.25;
+const CONTEXT_ASSEMBLY_MARGIN_TOKENS = 16;
 export const SUMMARY_PREFIX = '【此前对话摘要】\n';
 const TRIM_NOTE = '\n…（下文已按上下文预算压缩）';
 function envInt(name) {
@@ -45,6 +46,11 @@ export function getContextWindowTokens(modelId) {
 }
 export function getOutputReserveTokens() {
     return envInt('OUTPUT_RESERVE_TOKENS') ?? DEFAULT_OUTPUT_RESERVE_TOKENS;
+}
+function resolveOutputReserve(limitTokens, requested) {
+    if (requested !== undefined)
+        return requested;
+    return Math.min(getOutputReserveTokens(), Math.max(0, Math.floor(limitTokens / 4)));
 }
 /** 摘要写入上下文时的裁剪上限（字数上限），与 completion maxTokens 是两个独立量 */
 export function getCompactSummaryMaxTokens() {
@@ -196,7 +202,7 @@ function buildUsage(limitTokens, breakdown, compacted, droppedVerbatimTurns) {
 }
 export function assembleChatContext(params) {
     const limitTokens = params.limitTokens ?? getContextWindowTokens(params.modelId);
-    const outputReserve = params.outputReserve ?? getOutputReserveTokens();
+    const outputReserve = resolveOutputReserve(limitTokens, params.outputReserve);
     const breakdown = {
         system: estimateTokens(params.systemPrompt),
         summary: 0,
@@ -205,12 +211,20 @@ export function assembleChatContext(params) {
         pendingUser: estimateTokens(params.pendingUser),
         outputReserve,
     };
-    const summaryText = formatContextSummaryText(params.summary);
-    breakdown.summary = estimateTokens(summaryText);
-    const fixed = breakdown.system +
-        breakdown.summary +
+    const fixedWithoutSummary = breakdown.system +
         breakdown.pendingUser +
-        breakdown.outputReserve;
+        breakdown.outputReserve +
+        CONTEXT_ASSEMBLY_MARGIN_TOKENS;
+    if (fixedWithoutSummary > limitTokens) {
+        throw new Error('CONTEXT_FIXED_TOO_LARGE: 待发送内容过长，请缩短后再试');
+    }
+    let summaryText = formatContextSummaryText(params.summary);
+    const summaryBudget = Math.max(0, limitTokens - fixedWithoutSummary);
+    if (estimateTokens(summaryText) > summaryBudget) {
+        summaryText = trimTextToTokenBudget(summaryText, summaryBudget);
+    }
+    breakdown.summary = estimateTokens(summaryText);
+    const fixed = fixedWithoutSummary + breakdown.summary;
     const historyBudget = Math.max(0, limitTokens - fixed);
     const { fitted, omitted, used } = fitHistoryFromEnd(params.history, historyBudget);
     breakdown.history = used;
@@ -233,7 +247,7 @@ export function assembleChatContext(params) {
 }
 export function assembleWritingIntentContext(params) {
     const limitTokens = params.limitTokens ?? getContextWindowTokens(params.modelId);
-    const outputReserve = params.outputReserve ?? getOutputReserveTokens();
+    const outputReserve = resolveOutputReserve(limitTokens, params.outputReserve);
     const breakdown = {
         system: estimateTokens(params.systemPrompt),
         summary: 0,
@@ -242,24 +256,41 @@ export function assembleWritingIntentContext(params) {
         pendingUser: estimateTokens(`用户说：${params.userMessage}`),
         outputReserve,
     };
-    const summaryText = formatContextSummaryText(params.summary);
-    breakdown.summary = estimateTokens(summaryText);
-    let documentBlockForModel = params.documentBlock;
-    const fixedWithoutDoc = breakdown.system +
-        breakdown.summary +
+    const fixedCore = breakdown.system +
         breakdown.pendingUser +
-        breakdown.outputReserve;
+        breakdown.outputReserve +
+        CONTEXT_ASSEMBLY_MARGIN_TOKENS;
+    if (fixedCore > limitTokens) {
+        throw new Error('CONTEXT_FIXED_TOO_LARGE: 用户指令过长，请缩短后再试');
+    }
+    let summaryText = formatContextSummaryText(params.summary);
+    const summaryBudget = Math.max(0, limitTokens - fixedCore);
+    if (estimateTokens(summaryText) > summaryBudget) {
+        summaryText = trimTextToTokenBudget(summaryText, summaryBudget);
+    }
+    breakdown.summary = estimateTokens(summaryText);
+    let chapterBlockForModel = params.chapterBlock;
+    let documentBlockForModel = params.documentBlock;
+    const fixedWithoutDoc = fixedCore + breakdown.summary;
+    const documentBudget = Math.max(0, limitTokens - fixedWithoutDoc);
+    if (breakdown.document > documentBudget) {
+        chapterBlockForModel = trimTextToTokenBudget(params.chapterBlock, documentBudget);
+        const remainingDocumentBudget = Math.max(0, documentBudget - estimateTokens(chapterBlockForModel));
+        documentBlockForModel = trimTextToTokenBudget(params.documentBlock, remainingDocumentBudget);
+        breakdown.document =
+            estimateTokens(chapterBlockForModel) + estimateTokens(documentBlockForModel);
+    }
     let historyBudget = Math.max(0, limitTokens - fixedWithoutDoc - breakdown.document);
     let { fitted, omitted, used } = fitHistoryFromEnd(params.history, historyBudget);
-    if (omitted.length > 0 && params.documentBlock) {
+    if (omitted.length > 0 && documentBlockForModel) {
         // fixedWithoutDoc 已含 pendingUser，这里不再单独扣（修 C-Dedup：pendingUser 只计一次）
-        const docBudget = Math.max(600, limitTokens - fixedWithoutDoc - used - estimateTokens(params.chapterBlock) - 500);
+        const docBudget = Math.max(0, limitTokens - fixedWithoutDoc - used - estimateTokens(chapterBlockForModel) - 500);
         const prefix = '全篇文章节选（供理解意图；实际改稿仍只改上面这一章）：\n';
-        documentBlockForModel = params.documentBlock.startsWith('全篇')
-            ? trimTextToTokenBudget(params.documentBlock, docBudget)
-            : trimTextToTokenBudget(`${prefix}${params.documentBlock}`, docBudget);
+        documentBlockForModel = documentBlockForModel.startsWith('全篇')
+            ? trimTextToTokenBudget(documentBlockForModel, docBudget)
+            : trimTextToTokenBudget(`${prefix}${documentBlockForModel}`, docBudget);
         breakdown.document =
-            estimateTokens(params.chapterBlock) + estimateTokens(documentBlockForModel);
+            estimateTokens(chapterBlockForModel) + estimateTokens(documentBlockForModel);
         historyBudget = Math.max(0, limitTokens - fixedWithoutDoc - breakdown.document);
         const retry = fitHistoryFromEnd(params.history, historyBudget);
         fitted = retry.fitted;
@@ -268,7 +299,7 @@ export function assembleWritingIntentContext(params) {
     }
     breakdown.history = used;
     const finalUserContent = [
-        params.chapterBlock,
+        chapterBlockForModel,
         documentBlockForModel,
         `用户说：${params.userMessage}`,
     ]
@@ -283,7 +314,7 @@ export function assembleWritingIntentContext(params) {
     }
     messages.push({ role: 'user', content: finalUserContent });
     breakdown.document =
-        estimateTokens(params.chapterBlock) + estimateTokens(documentBlockForModel);
+        estimateTokens(chapterBlockForModel) + estimateTokens(documentBlockForModel);
     const needsCompact = omitted.length > 0;
     const usage = buildUsage(limitTokens, breakdown, Boolean(params.summary?.trim()) || needsCompact, omitted.length);
     return {
@@ -296,16 +327,21 @@ export function assembleWritingIntentContext(params) {
 }
 export function assembleWritingExecuteContext(params) {
     const limitTokens = params.limitTokens ?? getContextWindowTokens(params.modelId);
-    const outputReserve = params.outputReserve ?? getOutputReserveTokens();
+    const outputReserve = resolveOutputReserve(limitTokens, params.outputReserve);
     const systemTokens = estimateTokens(params.systemPrompt);
     const maxUser = Math.max(0, limitTokens - systemTokens - outputReserve - 200);
     // 修 C2：pinned 段（尤其用户指令）永不被截；只在 trimmable 段（本章正文/全篇节选）里裁
     const pinnedText = (params.pinnedParts ?? []).filter(Boolean).join('\n\n');
     const pinnedTokens = estimateTokens(pinnedText);
+    if (pinnedTokens > maxUser) {
+        throw new Error('CONTEXT_PINNED_TOO_LARGE: 正文或指令过长，请缩短后再试');
+    }
     const trimBudget = Math.max(0, maxUser - pinnedTokens);
     let trimmableText = (params.trimmableParts ?? []).filter(Boolean).join('\n\n');
     if (estimateTokens(trimmableText) > trimBudget) {
-        trimmableText = trimTextToTokenBudget(trimmableText, trimBudget);
+        trimmableText = params.trimmableDirection === 'tail'
+            ? trimTextToTokenBudgetTail(trimmableText, trimBudget)
+            : trimTextToTokenBudget(trimmableText, trimBudget);
     }
     // 指令类 pinned 段置前（模型先看到「要做什么」），再给可截断的正文/节选
     const userContent = [pinnedText, trimmableText].filter(Boolean).join('\n\n');

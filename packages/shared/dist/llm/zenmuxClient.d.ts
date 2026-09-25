@@ -13,6 +13,10 @@ export type ZenMuxWebSearchOptions = {
     region?: string;
     timezone?: string;
 };
+export type ZenMuxCompletionMeta = {
+    status: number;
+    finishReason?: string;
+};
 /** 识图识字（Gemini 多模态） */
 export declare function zenmuxOcr(params: {
     apiKey: string;
@@ -41,9 +45,7 @@ export declare function zenmuxCompleteMessages(params: {
     temperature?: number;
     model?: string;
     webSearch?: ZenMuxWebSearchOptions;
-    onMeta?: (meta: {
-        status: number;
-    }) => void;
+    onMeta?: (meta: ZenMuxCompletionMeta) => void;
 }): Promise<string>;
 export declare function verifyZenMuxKey(apiKey: string): Promise<void>;
 //# sourceMappingURL=zenmuxClient.d.ts.map

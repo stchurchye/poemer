@@ -7,6 +7,8 @@ import {
   commitPreparedWritingContext,
   prepareWritingIntentContext,
   prepareWritingExecuteContext,
+  previewChatContextPreview,
+  previewWritingIntentContextPreview,
 } from './contextPipeline.js';
 import type { ContextStoreAdapter } from './contextStore.js';
 import type { ModelClient } from './modelClient.js';
@@ -15,6 +17,11 @@ import type {
   ChatSession,
   Document,
   WritingAssistantMessage,
+} from '@shiren/shared';
+import {
+  exclusionFromBlocks,
+  ZENMUX_MODEL_CHAT,
+  ZENMUX_MODEL_FLASH_LITE,
 } from '@shiren/shared';
 
 function makeStore(session: ChatSession, messages: ChatMessage[]) {
@@ -78,6 +85,30 @@ test('prepareChatContext: 触发压缩时不写 store，改为返回 pendingCont
   assert.equal(updateCalls.length, 0, 'prepare 阶段绝不能写 store');
   assert.ok(prepared.pendingContextCommit, '应返回待提交的压缩产物');
   assert.ok(prepared.pendingContextCommit!.summary.length > 0);
+});
+
+test('prepareChatContext: 压缩调用按独立压缩模型 profile 设置输出预算', async () => {
+  const calls: Array<number | undefined> = [];
+  const model: ModelClient = {
+    async complete(input) {
+      calls.push(input.maxTokens);
+      return { text: '【摘要】早前聊了很多' };
+    },
+  };
+  const { store } = makeStore(session, bigMsgs(40));
+
+  await prepareChatContext({
+    store,
+    model,
+    sessionId: 's1',
+    pendingUser: '在吗',
+    limitTokens: 3000,
+    modelId: ZENMUX_MODEL_CHAT,
+    compactModelId: ZENMUX_MODEL_FLASH_LITE,
+  });
+
+  assert.ok(calls.length > 0, '测试前提：应触发压缩');
+  assert.ok(calls.every((maxTokens) => maxTokens === 16_384));
 });
 
 test('commitPreparedChatContext: 回复成功后提交才写一次 store', async () => {
@@ -196,6 +227,28 @@ test('prepareChatContext: 排除的消息不送入压缩模型，也不持久推
   assert.equal(updateCalls.length, 0, '不能用单一锚点跨过被排除消息');
 });
 
+test('previewChatContextPreview: 排除消息刷新后仍可见且往返选择不丢失', async () => {
+  const messages = bigMsgs(2);
+  messages[0] = { ...messages[0], content: '本轮明确排除' };
+  const { store } = makeStore(session, messages);
+  const preview = await previewChatContextPreview({
+    store,
+    sessionId: session.id,
+    pendingUser: '继续',
+    contextSelection: { excludedMessageIds: ['m0'], excludedBlockIds: [] },
+  });
+
+  const excluded = preview.blocks.find((block) => block.messageId === 'm0');
+  assert.ok(excluded);
+  assert.equal(excluded.selectedByDefault, false);
+  assert.ok(preview.messages.every((message) => !message.content.includes('本轮明确排除')));
+
+  const selectedIds = preview.blocks
+    .filter((block) => !block.selectable || block.selectedByDefault)
+    .map((block) => block.id);
+  assert.deepEqual(exclusionFromBlocks(preview.blocks, selectedIds).excludedMessageIds, ['m0']);
+});
+
 // ---- B2：ratio 达阈值但历史仍装得下时，也预防式压缩最老轮 ----
 
 test('prepareChatContext: 高占用但未溢出时仍预防式压缩（不再一进循环就 break）', async () => {
@@ -221,7 +274,15 @@ test('prepareWritingIntentContext: 触发压缩时不写 store，commit 后才�
   const doc: Document = {
     id: 'd1',
     title: '回忆录',
-    chapters: [{ id: 'c1', title: '第一章', order: 0, blocks: [{ id: 'b1', content: '正文' }] }],
+    chapters: [
+      {
+        id: 'c1',
+        title: '第一章',
+        order: 0,
+        chapterSummary: '',
+        blocks: [{ id: 'b1', content: '正文', currentRevisionId: null }],
+      },
+    ],
     globalSummary: '',
     styleGuide: '',
     currentRevisionId: null,
@@ -280,7 +341,14 @@ test('prepareWritingIntentContext: 排除消息时只做本轮压缩，不持久
   const doc: Document = {
     id: 'd2',
     title: '回忆录',
-    chapters: [{ id: 'c1', title: '第一章', order: 0, blocks: [{ id: 'b1', content: '正文' }] }],
+    chapters: [
+      {
+        id: 'c1',
+        title: '第一章',
+        order: 0,
+        blocks: [{ id: 'b1', content: '正文', currentRevisionId: null }],
+      },
+    ],
     globalSummary: '',
     styleGuide: '',
     currentRevisionId: null,
@@ -336,6 +404,58 @@ test('prepareWritingIntentContext: 排除消息时只做本轮压缩，不持久
   assert.equal(prepared.pendingWritingContextCommit, undefined);
   commitPreparedWritingContext(store, 'd2', prepared);
   assert.equal(updates.length, 0);
+});
+
+test('previewWritingIntentContextPreview: 排除的历史和文档块可见但不进入实际消息', async () => {
+  const doc: Document = {
+    id: 'preview-doc',
+    title: '预览文档',
+    chapters: [
+      {
+        id: 'c1',
+        title: '第一章',
+        order: 0,
+        chapterSummary: '',
+        blocks: [{ id: 'b1', content: '正文', currentRevisionId: null }],
+      },
+    ],
+    globalSummary: '',
+    styleGuide: '',
+    currentRevisionId: null,
+    revisionCount: 0,
+    createdAt: '0',
+    updatedAt: '0',
+    hiddenAt: null,
+  };
+  const messages: WritingAssistantMessage[] = [
+    {
+      id: 'w-private',
+      documentId: doc.id,
+      role: 'user',
+      content: '排除的写作历史',
+      kind: 'chat',
+      createdAt: '0',
+    },
+  ];
+  const preview = await previewWritingIntentContextPreview({
+    document: doc,
+    allMessages: messages,
+    chapterBlock: '排除的当前章节',
+    documentBlock: '排除的全文节选',
+    pendingUser: '继续',
+    contextSelection: {
+      excludedMessageIds: ['w-private'],
+      excludedBlockIds: ['chapter', 'document'],
+    },
+  });
+  const sent = preview.messages.map((message) => message.content).join('\n');
+
+  assert.ok(preview.blocks.some((block) => block.messageId === 'w-private'));
+  assert.equal(preview.blocks.find((block) => block.id === 'chapter')?.selectedByDefault, false);
+  assert.equal(preview.blocks.find((block) => block.id === 'document')?.selectedByDefault, false);
+  assert.ok(!sent.includes('排除的写作历史'));
+  assert.ok(!sent.includes('排除的当前章节'));
+  assert.ok(!sent.includes('排除的全文节选'));
 });
 
 test('prepareWritingIntentContext: 全篇摘要有效时立即缓存，避免双 prepare 重算后丢失', async () => {
@@ -433,16 +553,59 @@ test('prepareWritingIntentContext: 全篇摘要为空时不缓存', async () => 
 
 // ---- C2：改稿执行把用户指令放进 pinned 段，正文超长也不丢 ----
 
-test('prepareWritingExecuteContext: 正文超长时用户补充指令仍完整送达', () => {
+test('prepareWritingExecuteContext: 整章替换正文超出窗口时明确拒绝而不是静默裁切', () => {
   const instruction = '把这段改得更口语、更亲切，这句要求不能丢';
+  assert.throws(
+    () =>
+      prepareWritingExecuteContext({
+        action: '润色',
+        oldText: '正文'.repeat(30000),
+        instruction,
+        chapterTitle: '第一章',
+        limitTokens: 4000,
+        outputReserve: 200,
+      } as Parameters<typeof prepareWritingExecuteContext>[0]),
+    /CONTEXT_PINNED_TOO_LARGE/,
+  );
+});
+
+test('prepareWritingExecuteContext: 超长续写上下文保留正文结尾而不是开头', () => {
+  const oldText = `开头标记${'中间内容'.repeat(5000)}结尾标记`;
   const { messages } = prepareWritingExecuteContext({
-    action: '润色',
-    oldText: '正文'.repeat(30000),
-    instruction,
+    action: '续写',
+    oldText,
+    instruction: '接着写',
     chapterTitle: '第一章',
     limitTokens: 4000,
     outputReserve: 200,
   } as Parameters<typeof prepareWritingExecuteContext>[0]);
   const userMsg = messages.find((m) => m.role === 'user');
-  assert.ok(userMsg && userMsg.content.includes(instruction), '用户指令必须完整送达');
+  assert.ok(userMsg?.content.includes('结尾标记'));
+  assert.ok(!userMsg?.content.includes('开头标记'));
+});
+
+test('prepareWritingExecuteContext: 完整改写预计超过输出上限时在调用模型前拒绝', () => {
+  assert.throws(
+    () =>
+      prepareWritingExecuteContext({
+        action: '润色',
+        oldText: '需要完整保留的正文'.repeat(1000),
+        instruction: '只润色措辞',
+        limitTokens: 10_000,
+        outputReserve: 300,
+      }),
+    /CONTEXT_REWRITE_OUTPUT_TOO_LARGE/,
+  );
+});
+
+test('prepareWritingExecuteContext: 缩写允许原文长于输出预留', () => {
+  assert.doesNotThrow(() =>
+    prepareWritingExecuteContext({
+      action: '缩写',
+      oldText: '需要缩短的正文'.repeat(1000),
+      instruction: '压缩成一段摘要',
+      limitTokens: 10_000,
+      outputReserve: 300,
+    }),
+  );
 });

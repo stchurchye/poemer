@@ -33,41 +33,65 @@ export async function completeWritingExecute(
   model: ModelClient,
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
   fallback: WritingExecuteFallbackParams,
-  options?: { maxTokens?: number; temperature?: number },
+  options?: {
+    maxTokens?: number;
+    temperature?: number;
+    inputLimitTokens?: number;
+  },
 ): Promise<{ text: string; basis: WritingExecuteBasis }> {
-  const res = await model.complete({ messages, ...options });
+  const res = await model.complete({
+    messages,
+    maxTokens: options?.maxTokens,
+    temperature: options?.temperature,
+  });
+  if (res.finishReason === 'length') {
+    const error = new Error('改稿内容太长，模型没能完整写完。请缩短本章后再试。') as Error & {
+      code?: string;
+    };
+    error.code = 'WRITING_OUTPUT_TRUNCATED';
+    throw error;
+  }
   let { text, basis } = parseWritingExecuteResponse(res.text);
 
   if (hasWritingExecuteBasis(basis)) {
     return { text, basis: basis! };
   }
 
-  const filled = await fetchWritingExecuteBasisOnly(model, {
-    ...fallback,
-    suggestedText: text || fallback.suggestedText,
-  });
+  const filled = await fetchWritingExecuteBasisOnly(
+    model,
+    {
+      ...fallback,
+      suggestedText: text || fallback.suggestedText,
+    },
+    { inputLimitTokens: options?.inputLimitTokens },
+  );
   return { text, basis: filled };
 }
 
 async function fetchWritingExecuteBasisOnly(
   model: ModelClient,
   params: WritingExecuteFallbackParams,
+  options?: { inputLimitTokens?: number },
 ): Promise<WritingExecuteBasis> {
-  const userParts = [
+  const systemPrompt = `${writingPersonaForDialect(params.dialect)}\n\n${WRITING_EXECUTE_BASIS_ONLY_PROMPT}`;
+  const pinnedParts = [
     `改稿方式：${params.action}`,
     params.instruction?.trim() ? `用户要求：${params.instruction.trim()}` : '',
-    `原文：\n${params.oldText || '（空）'}`,
-    `改稿后正文：\n${params.suggestedText || '（空）'}`,
   ].filter(Boolean);
+  const trimmableParts = [
+    `改稿后正文：\n${params.suggestedText || '（空）'}`,
+    `原文：\n${params.oldText || '（空）'}`,
+  ].filter(Boolean);
+  const { messages } = assembleWritingExecuteContext({
+    systemPrompt,
+    pinnedParts,
+    trimmableParts,
+    limitTokens: options?.inputLimitTokens,
+    outputReserve: 512,
+  });
 
   const res = await model.complete({
-    messages: [
-      {
-        role: 'system',
-        content: `${writingPersonaForDialect(params.dialect)}\n\n${WRITING_EXECUTE_BASIS_ONLY_PROMPT}`,
-      },
-      { role: 'user', content: userParts.join('\n\n') },
-    ],
+    messages,
     temperature: 0.35,
     maxTokens: 512,
   });
@@ -94,6 +118,8 @@ export async function runWritingExecute(params: {
   understandingScope?: 'chapter' | 'document';
   documentExcerpt?: string;
   documentContextSummary?: string | null;
+  limitTokens?: number;
+  outputReserve?: number;
   modelId?: string | null;
 }): Promise<{
   text: string;
@@ -111,16 +137,26 @@ export async function runWritingExecute(params: {
     understandingScope: params.understandingScope,
     documentExcerpt: params.documentExcerpt,
     documentContextSummary: params.documentContextSummary,
+    limitTokens: params.limitTokens,
+    outputReserve: params.outputReserve,
     modelId: params.modelId,
   });
 
-  const parsed = await completeWritingExecute(params.model, messages, {
-    action: params.action,
-    oldText: params.oldText,
-    suggestedText: params.oldText,
-    instruction: params.instruction,
-    dialect: params.dialect,
-  });
+  const parsed = await completeWritingExecute(
+    params.model,
+    messages,
+    {
+      action: params.action,
+      oldText: params.oldText,
+      suggestedText: params.oldText,
+      instruction: params.instruction,
+      dialect: params.dialect,
+    },
+    {
+      maxTokens: usage.breakdown.outputReserve,
+      inputLimitTokens: usage.limitTokens,
+    },
+  );
 
   const isContinue = params.action === '续写';
   const text = isContinue ? params.oldText + parsed.text : parsed.text;
@@ -188,15 +224,18 @@ ${WRITING_EXECUTE_OUTPUT_RULES}`;
     pinnedParts = [...basePinned, `小助手上一版改稿（请从它的末尾继续写）：\n${base}`];
     trimmableParts = [priorLines ? `历次补充意见：\n${priorLines}` : ''].filter(Boolean);
   } else {
-    pinnedParts = basePinned;
+    // 非续写重试会把模型结果作为整章替换稿，因此“上一版”必须完整送达。
+    pinnedParts = [
+      ...basePinned,
+      `小助手上一版改稿：\n${params.previousSuggestion}`,
+    ];
     trimmableParts = [
       `原文：\n${params.oldText || '（空）'}`,
-      `小助手上一版改稿：\n${params.previousSuggestion}`,
       priorLines ? `历次补充意见：\n${priorLines}` : '',
     ].filter(Boolean);
   }
 
-  const { messages } = assembleWritingExecuteContext({
+  const { messages, usage } = assembleWritingExecuteContext({
     systemPrompt: system,
     pinnedParts,
     trimmableParts,
@@ -204,6 +243,22 @@ ${WRITING_EXECUTE_OUTPUT_RULES}`;
     outputReserve: params.outputReserve,
     modelId: params.modelId,
   });
+
+  if (!isContinue && params.action !== '缩写') {
+    const basisReserve = Math.min(
+      512,
+      Math.floor(usage.breakdown.outputReserve / 4),
+    );
+    const bodyOutputBudget = Math.max(
+      0,
+      usage.breakdown.outputReserve - basisReserve,
+    );
+    if (estimateTokens(params.previousSuggestion) > bodyOutputBudget) {
+      throw new Error(
+        'CONTEXT_REWRITE_OUTPUT_TOO_LARGE: 上一版太长，无法一次生成完整替换稿；请先缩短后再试',
+      );
+    }
+  }
 
   const parsed = await completeWritingExecute(
     params.model,
@@ -215,9 +270,13 @@ ${WRITING_EXECUTE_OUTPUT_RULES}`;
       instruction: params.additionalFeedback,
       dialect: params.dialect,
     },
+    {
+      maxTokens: usage.breakdown.outputReserve,
+      inputLimitTokens: usage.limitTokens,
+    },
   );
 
-  const text = isContinue ? params.oldText + parsed.text : parsed.text;
+  const text = isContinue ? params.previousSuggestion + parsed.text : parsed.text;
   return {
     text,
     comment: writingRetryDoneComment(params.dialect),

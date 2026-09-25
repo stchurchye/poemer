@@ -40,6 +40,7 @@ export function createZenMuxModelClient(options?: {
       }
       const startedAt = Date.now();
       let status: number | undefined;
+      let finishReason: string | undefined;
       try {
         const text = await zenmuxCompleteMessages({
           apiKey: key,
@@ -50,6 +51,7 @@ export function createZenMuxModelClient(options?: {
           webSearch,
           onMeta: (meta) => {
             status = meta.status;
+            finishReason = meta.finishReason;
           },
         });
         logLlmSuccess({
@@ -60,7 +62,7 @@ export function createZenMuxModelClient(options?: {
           startedAt,
           contentLen: text.length,
         });
-        return { text };
+        return { text, finishReason };
       } catch (e) {
         if (e instanceof ZenMuxError) {
           logLlmFailure({

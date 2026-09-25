@@ -131,7 +131,12 @@ export function createLocalStore(
   function updateDocument(id: string, patch: Partial<Document>): Document | undefined {
     const doc = documents.get(id);
     if (!doc) return undefined;
-    const updated = { ...doc, ...patch, updatedAt: now() };
+    const updated = {
+      ...doc,
+      ...patch,
+      ...(patch.chapters ? { documentContextSummary: null } : {}),
+      updatedAt: now(),
+    };
     documents.set(id, updated);
     return clone(updated);
   }
@@ -167,7 +172,7 @@ export function createLocalStore(
         blocks: ch.blocks.map((b) => (b.id === blockId ? { ...b, content } : b)),
       };
     });
-    return updateDocument(documentId, { chapters });
+    return updateDocument(documentId, { chapters, documentContextSummary: null });
   }
 
   function updateChapterTitle(
@@ -183,7 +188,7 @@ export function createLocalStore(
     const chapters = doc.chapters.map((ch) =>
       ch.id === chapterId ? { ...ch, title } : ch,
     );
-    return updateDocument(documentId, { chapters });
+    return updateDocument(documentId, { chapters, documentContextSummary: null });
   }
 
   function addChapter(documentId: string, title?: string): Document | undefined {
@@ -194,7 +199,7 @@ export function createLocalStore(
     const nextIndex = doc.chapters.length;
     const chapterTitle = title?.trim() || formatChapterTitle(nextIndex);
     const chapters = [...doc.chapters, emptyChapter(uuid, nextIndex, chapterTitle)];
-    return updateDocument(documentId, { chapters });
+    return updateDocument(documentId, { chapters, documentContextSummary: null });
   }
 
   function applyRevisionToDocument(rev: Revision) {

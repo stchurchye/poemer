@@ -49,6 +49,7 @@ import {
   getContextWindowTokens,
   getOutputReserveTokens,
   ZENMUX_MODEL_CHAT,
+  ZENMUX_MODEL_FLASH_LITE,
 } from '@shiren/shared';
 import { getZenMuxApiKey } from './zenmuxKey';
 import { createDeepSeekModelClient, LocalModelError, verifyDeepSeekKeyDirect } from './localModelClient';
@@ -145,6 +146,10 @@ const emptyContextPreview: ContextPreview = {
 };
 
 function rethrowAsApiError(e: unknown): never {
+  if (e instanceof Error && e.message.startsWith('CONTEXT_')) {
+    const [, detail] = e.message.split(/:\s*/, 2);
+    throw new Error(detail || '正文或指令太长，请缩短后再试');
+  }
   if (e instanceof LocalModelError) {
     const err = new Error(e.message) as Error & { code?: string; hint?: string };
     err.code = e.code;
@@ -369,6 +374,7 @@ export function createLocalApi(deps: {
           contextSelection: body.contextSelection,
           // 组装窗口按真实回复模型（gpt-5.4，272k）取；未接则回退保守默认
           modelId: ZENMUX_MODEL_CHAT,
+          compactModelId: ZENMUX_MODEL_FLASH_LITE,
         });
 
         let reply: string;
@@ -494,6 +500,7 @@ export function createLocalApi(deps: {
           model: await textModel(),
           sessionId,
           dialect,
+          compactModelId: ZENMUX_MODEL_FLASH_LITE,
         });
         const assistant = store().addChatMessage(sessionId, 'assistant', confirmation);
         if (!assistant) notFound('CHAT_SESSION_NOT_FOUND');
@@ -573,6 +580,7 @@ export function createLocalApi(deps: {
             contextSelection: payload.contextSelection,
             referenceScope: scope,
             modelId: DEEPSEEK_MODEL_PRO,
+            compactModelId: DEEPSEEK_MODEL_PRO,
           });
           const chatReply = await completeChatMessages(writingM, prepared.messages);
           const { user, assistant } = persistChatExchange(chatReply);
@@ -620,6 +628,7 @@ export function createLocalApi(deps: {
           contextSelection: payload.contextSelection,
           referenceScope: 'document',
           modelId: DEEPSEEK_MODEL_PRO,
+          compactModelId: DEEPSEEK_MODEL_PRO,
         });
         const intent = await analyzeWritingIntentMessagesLocal(
           writingM,
@@ -722,6 +731,7 @@ export function createLocalApi(deps: {
           contextSelection: payload.contextSelection,
           referenceScope: scope,
           modelId: DEEPSEEK_MODEL_PRO,
+          compactModelId: DEEPSEEK_MODEL_PRO,
         });
         const chatReply = await completeChatMessages(writingM, prepared.messages);
         const { user, assistant } = persistChatExchange(chatReply);
@@ -810,7 +820,11 @@ export function createLocalApi(deps: {
       const pending = store()
         .getWritingAssistantMessages(documentId)
         .find((m) => m.id === body.messageId);
-      if (!pending || pending.kind !== 'intent_confirm') {
+      if (
+        !pending ||
+        pending.kind !== 'intent_confirm' ||
+        pending.confirmStatus !== 'pending'
+      ) {
         notFound('WRITING_ASSISTANT_MESSAGE_NOT_FOUND');
       }
 
@@ -833,10 +847,6 @@ export function createLocalApi(deps: {
       try {
         const dialect = await getStoredDialect();
         const writingM = await intentModel();
-        store().updateWritingAssistantMessage(documentId, body.messageId, {
-          confirmStatus: 'approved',
-        });
-
         const executed = await runWritingExecute({
           model: writingM,
           action,
@@ -849,6 +859,10 @@ export function createLocalApi(deps: {
           documentExcerpt: body.documentExcerpt?.trim(),
           documentContextSummary: doc.documentContextSummary,
           modelId: DEEPSEEK_MODEL_PRO,
+        });
+
+        store().updateWritingAssistantMessage(documentId, body.messageId, {
+          confirmStatus: 'approved',
         });
 
         const revision = store().createRevision({
@@ -892,6 +906,10 @@ export function createLocalApi(deps: {
           contextUsage: executed.contextUsage,
         });
       } catch (e) {
+        store().updateWritingAssistantMessage(documentId, body.messageId, {
+          confirmStatus: 'pending',
+        });
+        deps.markChanged();
         rethrowAsApiError(e);
       }
     },

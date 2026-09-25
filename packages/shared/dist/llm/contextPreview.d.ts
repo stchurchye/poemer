@@ -17,6 +17,11 @@ export type ContextPreview = {
     usage: ContextUsage;
     messages: ContextChatMessage[];
 };
+type AvailableHistoryMessage = {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+};
 export type ContextSelection = {
     excludedBlockIds?: string[];
     excludedMessageIds?: string[];
@@ -34,6 +39,8 @@ export declare function defaultSelectedBlockIds(blocks: ContextPreviewBlock[]): 
 export declare function blocksFromAssembleChatResult(assembled: AssembleChatResult, opts?: {
     historyMessageIds?: string[];
     excludedMessageIds?: string[];
+    /** 选择前的候选历史；用于让被排除的消息继续显示为未勾选块 */
+    availableHistory?: AvailableHistoryMessage[];
     /** 已存在但被本轮选择排除的摘要：仍显示为未勾选块，方便用户重新选回 */
     availableSummary?: string | null;
 }): ContextPreview;
@@ -50,6 +57,8 @@ export declare function blocksFromWritingIntent(assembled: AssembleWritingIntent
     historyMessageIds?: string[];
     excludedMessageIds?: string[];
     excludedBlockIds?: string[];
+    /** 选择前的候选历史；用于让被排除的消息继续显示为未勾选块 */
+    availableHistory?: AvailableHistoryMessage[];
     /** 已存在但被本轮选择排除的摘要：仍显示为未勾选块，方便用户重新选回 */
     availableSummary?: string | null;
 }): ContextPreview;
@@ -58,4 +67,5 @@ export declare function filterHistoryTurns<T extends {
     content: string;
     id?: string;
 }>(history: T[], selection?: ContextSelection | null): T[];
+export {};
 //# sourceMappingURL=contextPreview.d.ts.map

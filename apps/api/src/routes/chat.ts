@@ -78,7 +78,7 @@ chatRouter.get('/sessions/:id/context-usage', async (c) => {
     });
     return c.json({ ok: true, data: usage, requestId: c.get('requestId') });
   } catch (e) {
-    return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+    return handleAiError(c, e);
   }
 });
 
@@ -99,7 +99,7 @@ chatRouter.get('/sessions/:id/context-preview', async (c) => {
     });
     return c.json({ ok: true, data, requestId: c.get('requestId') });
   } catch (e) {
-    return jsonError(c, ErrorCodes.NOT_FOUND, 404);
+    return handleAiError(c, e);
   }
 });
 

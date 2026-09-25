@@ -127,6 +127,8 @@ export declare function assembleWritingExecuteContext(params: {
     pinnedParts?: string[];
     /** 可截断段（本章正文、全篇节选）——超预算时优先在这里裁 */
     trimmableParts?: string[];
+    /** 续写需要保留正文结尾；其它改稿默认保留开头。 */
+    trimmableDirection?: 'head' | 'tail';
     limitTokens?: number;
     outputReserve?: number;
     modelId?: string | null;

@@ -99,7 +99,12 @@ export function createLocalStore(initial, deps) {
         const doc = documents.get(id);
         if (!doc)
             return undefined;
-        const updated = { ...doc, ...patch, updatedAt: now() };
+        const updated = {
+            ...doc,
+            ...patch,
+            ...(patch.chapters ? { documentContextSummary: null } : {}),
+            updatedAt: now(),
+        };
         documents.set(id, updated);
         return clone(updated);
     }
@@ -131,7 +136,7 @@ export function createLocalStore(initial, deps) {
                 blocks: ch.blocks.map((b) => (b.id === blockId ? { ...b, content } : b)),
             };
         });
-        return updateDocument(documentId, { chapters });
+        return updateDocument(documentId, { chapters, documentContextSummary: null });
     }
     function updateChapterTitle(documentId, chapterId, title) {
         const doc = documents.get(documentId);
@@ -143,7 +148,7 @@ export function createLocalStore(initial, deps) {
         if (chapter.title === title)
             return clone(doc);
         const chapters = doc.chapters.map((ch) => ch.id === chapterId ? { ...ch, title } : ch);
-        return updateDocument(documentId, { chapters });
+        return updateDocument(documentId, { chapters, documentContextSummary: null });
     }
     function addChapter(documentId, title) {
         const doc = documents.get(documentId);
@@ -154,7 +159,7 @@ export function createLocalStore(initial, deps) {
         const nextIndex = doc.chapters.length;
         const chapterTitle = title?.trim() || formatChapterTitle(nextIndex);
         const chapters = [...doc.chapters, emptyChapter(uuid, nextIndex, chapterTitle)];
-        return updateDocument(documentId, { chapters });
+        return updateDocument(documentId, { chapters, documentContextSummary: null });
     }
     function applyRevisionToDocument(rev) {
         const doc = documents.get(rev.documentId);

@@ -7,6 +7,7 @@ import {
   chatPersonaForDialect,
   contextSelectionWithServerMarks,
   defaultSelectedBlockIds,
+  estimateTokens,
   filterHistoryTurns,
   shouldCompact,
   usesExclusionMode,
@@ -162,6 +163,7 @@ export async function prepareChatContext(params: {
   limitTokens?: number;
   outputReserve?: number;
   modelId?: string | null;
+  compactModelId?: string | null;
 }): Promise<PreparedChatContext> {
   const session = params.store.getChatSession(params.sessionId);
   if (!session) throw new Error('SESSION_NOT_FOUND');
@@ -219,13 +221,12 @@ export async function prepareChatContext(params: {
         ? rawAfterAnchor.slice(0, rawCut + 1)
         : filteredToFold;
 
-    // 压缩 completion 上限保持安全默认（8192），不按回复模型放大——压缩模型可能是
-    // flash-lite / DeepSeek，其单次输出上限各异；modelId 只用于组装窗口，不传给压缩。
     const merged = await compactHistoryViaLlm({
       model: params.model,
       messages: toTurns(rawToFold),
       existingSummary: summary,
       dialect: params.dialect,
+      modelId: params.compactModelId,
     });
     // 修 review#1（HIGH）：压缩模型返回空/纯空白（弱模型拒答、上游异常返回空而非抛错）时，
     // 绝不推进锚点、绝不提交空摘要——否则被折叠的逐字对话会连同摘要一起消失（重新引入 A1 丢失）。
@@ -277,13 +278,11 @@ export async function previewChatContextPreview(params: {
     params.contextSelection,
   );
   const summaryExcluded = excludesSummary(effectiveSelection);
-  const historyMsgs = applyContextSelection(
-    chatHistoryAfterAnchor(
-      allMessages,
-      summaryExcluded ? null : session.contextSummaryUpToMessageId,
-    ),
-    effectiveSelection,
+  const availableHistory = chatHistoryAfterAnchor(
+    allMessages,
+    summaryExcluded ? null : session.contextSummaryUpToMessageId,
   );
+  const historyMsgs = applyContextSelection(availableHistory, effectiveSelection);
   const assembled = assembleChatContext({
     systemPrompt: chatPersonaForDialect(params.dialect),
     summary: summaryExcluded ? null : session.contextSummary,
@@ -296,6 +295,7 @@ export async function previewChatContextPreview(params: {
       ? effectiveSelection!.excludedMessageIds
       : undefined,
     availableSummary: summaryExcluded ? session.contextSummary : undefined,
+    availableHistory,
   });
   return {
     ...preview,
@@ -324,6 +324,7 @@ export async function compactChatSession(params: {
   model: ModelClient;
   sessionId: string;
   dialect?: ReplyDialect;
+  compactModelId?: string | null;
 }): Promise<{ confirmation: string; usage: ContextUsage }> {
   const session = params.store.getChatSession(params.sessionId);
   if (!session) throw new Error('SESSION_NOT_FOUND');
@@ -357,6 +358,7 @@ export async function compactChatSession(params: {
     messages: toTurns(afterAnchor),
     existingSummary: session.contextSummary ?? null,
     dialect: params.dialect,
+    modelId: params.compactModelId,
   });
   if (!summary.trim()) {
     const usage = await previewChatContextUsage({
@@ -428,6 +430,7 @@ type PrepareWritingSidebarContextParams = {
   limitTokens?: number;
   outputReserve?: number;
   modelId?: string | null;
+  compactModelId?: string | null;
 };
 
 async function prepareWritingSidebarContext(
@@ -510,6 +513,7 @@ async function prepareWritingSidebarContext(
         messages: toTurns(toCompact),
         existingSummary: summary,
         dialect: params.dialect,
+        modelId: params.compactModelId,
       });
       // 修 review#1（HIGH）：压缩返回空时不推进锚点、不落库，保留既有摘要，避免逐字历史丢成空摘要
       if (!merged.trim()) break;
@@ -534,6 +538,7 @@ async function prepareWritingSidebarContext(
         model: params.model,
         documentExcerpt: documentBlock,
         dialect: params.dialect,
+        modelId: params.compactModelId,
       });
       if (!compactDoc.trim()) break;
       // 文档摘要没有消息锚点，是可重复生成的缓存；立即保存，避免 intent/chat 双 prepare
@@ -615,32 +620,45 @@ export async function previewWritingIntentContextPreview(params: {
     params.contextSelection,
   );
   const summaryExcluded = excludesSummary(effectiveSelection);
-  const historyMsgs = applyContextSelection(
-    writingHistoryAfterAnchor(
-      params.allMessages,
-      summaryExcluded ? null : params.document.writingContextSummaryUpToMessageId,
-    ),
-    effectiveSelection,
+  const availableHistory = writingHistoryAfterAnchor(
+    params.allMessages,
+    summaryExcluded ? null : params.document.writingContextSummaryUpToMessageId,
   );
-  const docBlock =
+  const historyMsgs = applyContextSelection(availableHistory, effectiveSelection);
+  const availableDocumentBlock =
     params.document.documentContextSummary?.trim() &&
     params.documentBlock.length > 4000
       ? `全篇摘要：\n${params.document.documentContextSummary}`
       : params.documentBlock;
 
+  const availableBlocks = blocksFromWritingIntent(
+    assembleWritingIntentContext({
+      systemPrompt: writingIntentPromptForDialect(params.dialect),
+      history: [],
+      chapterBlock: params.chapterBlock,
+      documentBlock: availableDocumentBlock,
+      userMessage: params.pendingUser?.trim() || '…',
+      modelId: params.modelId,
+    }),
+    { chapterBlock: params.chapterBlock, documentBlock: availableDocumentBlock },
+  );
+  const included = writingBlocksIncluded(availableBlocks, effectiveSelection);
+  const chapterBlockForModel = included.chapter ? params.chapterBlock : '';
+  const documentBlockForModel = included.document ? availableDocumentBlock : '';
+
   const assembled = assembleWritingIntentContext({
     systemPrompt: writingIntentPromptForDialect(params.dialect),
     summary: summaryExcluded ? null : params.document.writingContextSummary,
     history: toTurns(historyMsgs),
-    chapterBlock: params.chapterBlock,
-    documentBlock: docBlock,
+    chapterBlock: chapterBlockForModel,
+    documentBlock: documentBlockForModel,
     userMessage: params.pendingUser?.trim() || '…',
     modelId: params.modelId,
   });
 
   const preview = blocksFromWritingIntent(assembled, {
     chapterBlock: params.chapterBlock,
-    documentBlock: docBlock,
+    documentBlock: availableDocumentBlock,
     historyMessageIds: historyMsgs.map((m) => m.id),
     excludedMessageIds: usesExclusionMode(effectiveSelection)
       ? effectiveSelection!.excludedMessageIds
@@ -651,6 +669,7 @@ export async function previewWritingIntentContextPreview(params: {
     availableSummary: summaryExcluded
       ? params.document.writingContextSummary
       : undefined,
+    availableHistory,
   });
 
   return {
@@ -658,7 +677,8 @@ export async function previewWritingIntentContextPreview(params: {
     usage: {
       ...preview.usage,
       compacted:
-        Boolean(params.document.writingContextSummary?.trim()) || assembled.needsCompact,
+        (!summaryExcluded && Boolean(params.document.writingContextSummary?.trim())) ||
+        assembled.needsCompact,
     },
   };
 }
@@ -714,8 +734,7 @@ ${WRITING_EXECUTE_OUTPUT_RULES}`;
         ? `全篇节选（仅供理解，勿改其它章）：\n${params.documentExcerpt.trim()}`
         : '';
 
-  // 修 C2：把用户指令/风格/范围说明放进 pinned 段（永不被截），只在 trimmable 段（正文/全篇节选）里裁
-  const pinnedParts = [
+  const basePinnedParts = [
     params.styleGuide ? `写作风格：${params.styleGuide}` : '',
     params.chapterTitle ? `待改本章：${params.chapterTitle}` : '',
     useFullDoc
@@ -724,19 +743,39 @@ ${WRITING_EXECUTE_OUTPUT_RULES}`;
     params.instruction ? `用户补充：${params.instruction}` : '',
   ].filter(Boolean);
 
-  const trimmableParts = [
-    `待改本章正文：\n${params.oldText || '（空）'}`,
-    docPart,
-  ].filter(Boolean);
+  // 整章替换绝不能裁掉正文后仍生成“完整替换稿”；续写则保留正文尾部作为接写点。
+  const pinnedParts = isContinue
+    ? basePinnedParts
+    : [...basePinnedParts, `待改本章正文：\n${params.oldText || '（空）'}`];
+  const trimmableParts = isContinue
+    ? [docPart, `待改本章正文：\n${params.oldText || '（空）'}`].filter(Boolean)
+    : [docPart].filter(Boolean);
 
   const { messages, usage } = assembleWritingExecuteContext({
     systemPrompt: system,
     pinnedParts,
     trimmableParts,
+    trimmableDirection: isContinue ? 'tail' : 'head',
     limitTokens: params.limitTokens,
     outputReserve: params.outputReserve,
     modelId: params.modelId,
   });
+
+  if (!isContinue && params.action !== '缩写') {
+    const basisReserve = Math.min(
+      512,
+      Math.floor(usage.breakdown.outputReserve / 4),
+    );
+    const bodyOutputBudget = Math.max(
+      0,
+      usage.breakdown.outputReserve - basisReserve,
+    );
+    if (estimateTokens(params.oldText) > bodyOutputBudget) {
+      throw new Error(
+        'CONTEXT_REWRITE_OUTPUT_TOO_LARGE: 本章太长，无法一次生成完整替换稿；请先分章或缩短后再试',
+      );
+    }
+  }
 
   return { messages: messages as ChatMessageInput[], usage };
 }

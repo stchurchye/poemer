@@ -16,6 +16,36 @@ export function getDeepSeekKey(c: Context<{ Variables: AppVariables }>): string 
 }
 
 export function handleAiError(c: Context<{ Variables: AppVariables }>, e: unknown) {
+  if (e instanceof Error && e.message.startsWith('CONTEXT_')) {
+    const [, detail] = e.message.split(/:\s*/, 2);
+    return c.json(
+      {
+        ok: false,
+        message: detail || '正文或指令太长，请缩短后再试',
+        hint: '原文保持不变。',
+        code: ErrorCodes.VALIDATION,
+        requestId: c.get('requestId'),
+        retryable: false,
+      },
+      400,
+    );
+  }
+  if (
+    e instanceof Error &&
+    (e as Error & { code?: string }).code === 'WRITING_OUTPUT_TRUNCATED'
+  ) {
+    return c.json(
+      {
+        ok: false,
+        message: e.message,
+        hint: '原文保持不变，没有生成不完整的替换稿。',
+        code: ErrorCodes.VALIDATION,
+        requestId: c.get('requestId'),
+        retryable: false,
+      },
+      400,
+    );
+  }
   if (e instanceof DeepSeekError) {
     if (e.message === 'API_KEY_MISSING') {
       return jsonError(c, ErrorCodes.API_KEY_MISSING, 400);

@@ -3,19 +3,17 @@ import {
   chatSessionTitlePromptForDialect,
   DEEPSEEK_BASE_URL,
   DEEPSEEK_MODEL_PRO,
-  writingPersonaForDialect,
   writingIntentPromptForDialect,
-  writingDoneComment,
-  writingRetryDoneComment,
-  WRITING_RETRY_PROMPT,
-  WRITING_EXECUTE_OUTPUT_RULES,
   parseWritingIntentResponse,
   isAssistantGuideKey,
-  ACTION_PROMPTS,
   type AssistantGuideKey,
   type ReplyDialect,
 } from '@shiren/shared';
-import { completeWritingExecuteRaw } from './writingExecuteCompletion.js';
+import {
+  runWritingExecute,
+  runWritingExecuteRetry,
+  type ModelClient,
+} from '@shiren/engine';
 
 export type ChatMessageInput = { role: 'system' | 'user' | 'assistant'; content: string };
 
@@ -48,11 +46,16 @@ export function hasApiKeyConfigured(headerKey?: string | null): boolean {
   return Boolean(resolveApiKey(headerKey));
 }
 
-export async function chatCompletionRaw(
+export type ChatCompletionResult = {
+  text: string;
+  finishReason?: string;
+};
+
+export async function chatCompletionResultRaw(
   apiKey: string,
   messages: ChatMessageInput[],
   options?: { maxTokens?: number; temperature?: number },
-): Promise<string> {
+): Promise<ChatCompletionResult> {
   const res = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -69,7 +72,7 @@ export async function chatCompletionRaw(
   });
 
   const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
     error?: { message?: string };
   };
 
@@ -78,9 +81,28 @@ export async function chatCompletionRaw(
     throw new DeepSeekError(msg, res.status);
   }
 
-  const content = json.choices?.[0]?.message?.content?.trim();
+  const choice = json.choices?.[0];
+  const content = choice?.message?.content?.trim();
   if (!content) throw new DeepSeekError('小助手没有返回内容，请再试一次');
-  return content;
+  return { text: content, finishReason: choice?.finish_reason };
+}
+
+export async function chatCompletionRaw(
+  apiKey: string,
+  messages: ChatMessageInput[],
+  options?: { maxTokens?: number; temperature?: number },
+): Promise<string> {
+  return (await chatCompletionResultRaw(apiKey, messages, options)).text;
+}
+
+function modelFromApiKey(apiKey: string): ModelClient {
+  return {
+    complete: (input) =>
+      chatCompletionResultRaw(apiKey, input.messages as ChatMessageInput[], {
+        maxTokens: input.maxTokens,
+        temperature: input.temperature,
+      }),
+  };
 }
 
 /** 验证密钥是否可用 */
@@ -112,57 +134,18 @@ export async function deepseekWriting(params: {
   comment: string;
   basis: import('@shiren/shared').WritingExecuteBasis;
 }> {
-  const actionPrompt = ACTION_PROMPTS[params.action] ?? ACTION_PROMPTS['润色'];
-  const isContinue = params.action === '续写';
-  const useFullDoc = params.understandingScope === 'document';
-
-  const system = `${writingPersonaForDialect(params.dialect)}
-
-${actionPrompt}
-
-要求：
-- 每次只能修改「待改本章」的正文；其它章节仅供理解上下文，不得改写或输出其它章节内容。
-${isContinue ? '- 只输出需要续写的新增段落，不要重复原文，不要加标题或说明' : '- 只输出修改后的完整段落正文，不要加标题、引号或解释'}
-- 不要使用 markdown 格式
-
-${WRITING_EXECUTE_OUTPUT_RULES}`;
-
-  const userParts = [
-    params.styleGuide ? `写作风格：${params.styleGuide}` : '',
-    params.chapterTitle ? `待改本章：${params.chapterTitle}` : '',
-    useFullDoc
-      ? '理解范围：可参考下方全篇节选理解上下文，但输出只能替换待改本章正文。'
-      : '理解范围：仅根据待改本章正文理解，不要引用其它章节内容来改写。',
-    `待改本章正文：\n${params.oldText || '（空）'}`,
-    useFullDoc && params.documentExcerpt?.trim()
-      ? `全篇节选（仅供理解，勿改其它章）：\n${params.documentExcerpt.trim()}`
-      : '',
-    params.instruction ? `用户补充：${params.instruction}` : '',
-  ].filter(Boolean);
-
-  const { text: body, basis } = await completeWritingExecuteRaw(
-    params.apiKey,
-    [
-      { role: 'system', content: system },
-      { role: 'user', content: userParts.join('\n\n') },
-    ],
-    {
-      action: params.action,
-      oldText: params.oldText,
-      suggestedText: params.oldText,
-      instruction: params.instruction,
-      dialect: params.dialect,
-    },
-  );
-
-  const merged = isContinue ? params.oldText + body : body;
-  const comment = writingDoneComment(params.action, params.dialect);
-
-  return {
-    text: merged,
-    comment,
-    basis,
-  };
+  return runWritingExecute({
+    model: modelFromApiKey(params.apiKey),
+    action: params.action,
+    oldText: params.oldText,
+    instruction: params.instruction,
+    styleGuide: params.styleGuide,
+    dialect: params.dialect,
+    chapterTitle: params.chapterTitle,
+    understandingScope: params.understandingScope,
+    documentExcerpt: params.documentExcerpt,
+    modelId: DEEPSEEK_MODEL_PRO,
+  });
 }
 
 /** 再改一版：保留初次要求 + 上一版改稿 + 历次/本轮补充意见 */
@@ -181,55 +164,18 @@ export async function deepseekWritingRetry(params: {
   comment: string;
   basis: import('@shiren/shared').WritingExecuteBasis;
 }> {
-  const actionPrompt = ACTION_PROMPTS[params.action] ?? ACTION_PROMPTS['润色'];
-  const isContinue = params.action === '续写';
-
-  const system = `${writingPersonaForDialect(params.dialect)}
-
-${actionPrompt}
-
-${WRITING_RETRY_PROMPT}
-${isContinue ? '- 续写任务：在上一版改稿末尾继续写，只输出新增段落' : ''}
-
-${WRITING_EXECUTE_OUTPUT_RULES}`;
-
-  const priorLines = (params.priorFeedback ?? [])
-    .filter((line) => line.trim())
-    .map((line, i) => `${i + 1}. ${line.trim()}`)
-    .join('\n');
-
-  const userParts = [
-    params.styleGuide ? `写作风格：${params.styleGuide}` : '',
-    `原文：\n${params.oldText || '（空）'}`,
-    params.baseInstruction.trim()
-      ? `初次改稿要求：\n${params.baseInstruction.trim()}`
-      : '',
-    `小助手上一版改稿：\n${params.previousSuggestion}`,
-    priorLines ? `历次补充意见：\n${priorLines}` : '',
-    `用户本轮补充意见：\n${params.additionalFeedback.trim()}`,
-  ].filter(Boolean);
-
-  const { text: body, basis } = await completeWritingExecuteRaw(
-    params.apiKey,
-    [
-      { role: 'system', content: system },
-      { role: 'user', content: userParts.join('\n\n') },
-    ],
-    {
-      action: params.action,
-      oldText: params.oldText,
-      suggestedText: params.previousSuggestion,
-      instruction: params.baseInstruction,
-      dialect: params.dialect,
-    },
-  );
-
-  const merged = isContinue ? params.previousSuggestion + body : body;
-  return {
-    text: merged,
-    comment: writingRetryDoneComment(params.dialect),
-    basis,
-  };
+  return runWritingExecuteRetry({
+    model: modelFromApiKey(params.apiKey),
+    action: params.action,
+    oldText: params.oldText,
+    baseInstruction: params.baseInstruction,
+    previousSuggestion: params.previousSuggestion,
+    additionalFeedback: params.additionalFeedback,
+    priorFeedback: params.priorFeedback,
+    styleGuide: params.styleGuide,
+    dialect: params.dialect,
+    modelId: DEEPSEEK_MODEL_PRO,
+  });
 }
 
 export type WritingIntentResult = {

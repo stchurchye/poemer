@@ -163,4 +163,25 @@ test('hideDocument sets hiddenAt; restoreDocument clears it', () => {
     assert.equal(restored?.hiddenAt, null);
     assert.equal(store.getDocument(doc.id)?.hiddenAt, null);
 });
+test('documentContextSummary is invalidated by every document content mutation', () => {
+    const store = createLocalStore(createEmptyPersistedStore(), {
+        now: () => '2026-05-22T00:00:00.000Z',
+        uuid: (() => {
+            let n = 0;
+            return () => `id-${++n}`;
+        })(),
+    });
+    let doc = store.createDocument('长篇');
+    const chapter = doc.chapters[0];
+    const block = chapter.blocks[0];
+    store.updateDocumentContextFields(doc.id, { documentContextSummary: '旧全文摘要' });
+    doc = store.saveDocumentContent(doc.id, chapter.id, block.id, '修改后的正文');
+    assert.equal(doc.documentContextSummary, null, '正文变化后摘要必须失效');
+    store.updateDocumentContextFields(doc.id, { documentContextSummary: '旧全文摘要' });
+    doc = store.updateChapterTitle(doc.id, chapter.id, '新的章节标题');
+    assert.equal(doc.documentContextSummary, null, '章节标题变化后摘要必须失效');
+    store.updateDocumentContextFields(doc.id, { documentContextSummary: '旧全文摘要' });
+    doc = store.addChapter(doc.id);
+    assert.equal(doc.documentContextSummary, null, '章节结构变化后摘要必须失效');
+});
 //# sourceMappingURL=createLocalStore.test.js.map

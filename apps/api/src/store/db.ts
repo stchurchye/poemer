@@ -101,7 +101,12 @@ export function getDocument(id: string): Document | undefined {
 export function updateDocument(id: string, patch: Partial<Document>): Document | undefined {
   const doc = documents.get(id);
   if (!doc) return undefined;
-  const updated = { ...doc, ...patch, updatedAt: now() };
+  const updated = {
+    ...doc,
+    ...patch,
+    ...(patch.chapters ? { documentContextSummary: null } : {}),
+    updatedAt: now(),
+  };
   documents.set(id, updated);
   persist();
   return updated;
@@ -122,7 +127,7 @@ export function saveDocumentContent(
       blocks: ch.blocks.map((b) => (b.id === blockId ? { ...b, content } : b)),
     };
   });
-  return updateDocument(documentId, { chapters });
+  return updateDocument(documentId, { chapters, documentContextSummary: null });
 }
 
 const MAX_CHAPTERS = 50;
@@ -135,7 +140,7 @@ export function addChapter(documentId: string, title?: string): Document | undef
   const nextIndex = doc.chapters.length;
   const chapterTitle = title?.trim() || formatChapterTitle(nextIndex);
   const chapters = [...doc.chapters, emptyChapter(nextIndex, chapterTitle)];
-  return updateDocument(documentId, { chapters });
+  return updateDocument(documentId, { chapters, documentContextSummary: null });
 }
 
 function applyRevisionToDocument(rev: Revision) {

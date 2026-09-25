@@ -43,6 +43,54 @@ test('blocksFromAssembleChatResult: 被排除的既有摘要仍显示为未选�
     assert.equal(summary.selectedByDefault, false);
     assert.ok(preview.messages.every((message) => !message.content.includes('既有摘要')));
 });
+test('blocksFromAssembleChatResult: 被排除的普通消息仍保留为未选候选块', () => {
+    const availableHistory = [
+        { id: 'm-private', role: 'user', content: '不发送的私密内容' },
+        { id: 'm-public', role: 'assistant', content: '可以发送的回答' },
+    ];
+    const assembled = assembleChatContext({
+        systemPrompt: 'system',
+        history: [availableHistory[1]],
+        pendingUser: '继续',
+        limitTokens: 10_000,
+    });
+    const preview = blocksFromAssembleChatResult(assembled, {
+        historyMessageIds: ['m-public'],
+        excludedMessageIds: ['m-private'],
+        availableHistory,
+    });
+    const excluded = preview.blocks.find((block) => block.messageId === 'm-private');
+    assert.ok(excluded, '刷新预览后仍应能看到并重新勾选被排除消息');
+    assert.equal(excluded.selectedByDefault, false);
+    assert.equal(excluded.omittedByBudget, false);
+    assert.ok(preview.messages.every((message) => !message.content.includes('私密内容')));
+});
+test('blocksFromWritingIntent: 被排除的写作消息仍保留为未选候选块', () => {
+    const availableHistory = [
+        { id: 'w-private', role: 'user', content: '不发送的写作私密内容' },
+        { id: 'w-public', role: 'assistant', content: '可以发送的写作回答' },
+    ];
+    const assembled = assembleWritingIntentContext({
+        systemPrompt: 'system',
+        history: [availableHistory[1]],
+        chapterBlock: '',
+        documentBlock: '',
+        userMessage: '继续',
+        limitTokens: 10_000,
+    });
+    const preview = blocksFromWritingIntent(assembled, {
+        chapterBlock: '',
+        documentBlock: '',
+        historyMessageIds: ['w-public'],
+        excludedMessageIds: ['w-private'],
+        availableHistory,
+    });
+    const excluded = preview.blocks.find((block) => block.messageId === 'w-private');
+    assert.ok(excluded, '写作预览刷新后仍应能重新勾选被排除消息');
+    assert.equal(excluded.selectedByDefault, false);
+    assert.equal(excluded.omittedByBudget, false);
+    assert.ok(preview.messages.every((message) => !message.content.includes('私密内容')));
+});
 test('preview block ids stay stable when summary visibility changes', () => {
     const history = [
         { role: 'user', content: '问题' },

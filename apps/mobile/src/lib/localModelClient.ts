@@ -56,10 +56,12 @@ export function createDeepSeekModelClient(label = 'DeepSeek'): ModelClient {
         const json = (await res.json()) as {
           choices?: Array<{
             message?: { content?: string; reasoning_content?: string };
+            finish_reason?: string;
           }>;
           error?: { message?: string };
         };
-        const message = json?.choices?.[0]?.message;
+        const choice = json?.choices?.[0];
+        const message = choice?.message;
         const text = message?.content;
         if (!res.ok || typeof text !== 'string' || text.length === 0) {
           const reasoningOnly =
@@ -89,7 +91,7 @@ export function createDeepSeekModelClient(label = 'DeepSeek'): ModelClient {
           startedAt,
           contentLen: text.length,
         });
-        return { text };
+        return { text, finishReason: choice?.finish_reason };
       } catch (e) {
         if (e instanceof LocalModelError) throw e;
         logLlmFailure({

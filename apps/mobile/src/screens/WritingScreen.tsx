@@ -7,6 +7,7 @@ import { useEditorChromeCollapse } from '../hooks/useEditorChromeCollapse';
 import { useTripleTapKeyboardUnlock } from '../hooks/useTripleTapKeyboardUnlock';
 import {
   ActivityIndicator,
+  AppState,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -20,13 +21,14 @@ import {
 import { appAlert } from '../lib/appAlert';
 import { filterVisibleDocuments, isDocumentHidden } from '../lib/documentVisibility';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   buildChapterTitle,
   buildWritingAssistantChapterContext,
   parseChapterTitle,
+  SerializedTaskQueue,
   type Document,
   type Revision,
   type WritingUnderstandingScope,
@@ -76,6 +78,7 @@ import {
   useReconnectEffect,
   useSuppressGlobalOfflineBanner,
 } from '../context/ApiConnectivityContext';
+import { useLocalStore } from '../context/LocalStoreContext';
 import { promptText } from '../lib/promptText';
 import {
   WritingAssistantSheet,
@@ -164,6 +167,7 @@ function WritingToolbarChip({
 
 export function WritingScreen({ navigation, route }: Props) {
   const styles = useThemedStyles(createWritingScreenStyles);
+  const isFocused = useIsFocused();
 
   const insets = useSafeAreaInsets();
   const { isTablet, smallFontSize, tabBarHeight } = useLayout();
@@ -174,7 +178,8 @@ export function WritingScreen({ navigation, route }: Props) {
   const { collapsed: editorChromeCollapsed, onInputFocus, onInputBlur, expandChrome } =
     useEditorChromeCollapse();
   const bodyInputRef = useRef<TextInput>(null);
-  const bodySaveChainRef = useRef(Promise.resolve());
+  const bodySaveQueueRef = useRef(new SerializedTaskQueue());
+  const bodyDraftRef = useRef('');
   const {
     keyboardUnlocked,
     onBodyPressIn,
@@ -192,9 +197,14 @@ export function WritingScreen({ navigation, route }: Props) {
   const [docError, setDocError] = useState<string | null>(null);
   const [docErrorHint, setDocErrorHint] = useState<string | undefined>();
   const colors = useColors();
+  const { persistNow: persistLocalStoreNow } = useLocalStore();
   useSuppressGlobalOfflineBanner(Boolean(initError || docError));
   const [toast, setToast] = useState(route.params?.toast);
   const [bodyDraft, setBodyDraft] = useState('');
+  const updateBodyDraft = useCallback((content: string) => {
+    bodyDraftRef.current = content;
+    setBodyDraft(content);
+  }, []);
   const [bodyInputFocused, setBodyInputFocused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -424,14 +434,14 @@ export function WritingScreen({ navigation, route }: Props) {
   }, [doc?.id, doc?.chapters]);
 
   useEffect(() => {
-    setBodyDraft(activeBlock?.content ?? '');
+    updateBodyDraft(activeBlock?.content ?? '');
     setSelection({ start: 0, end: 0 });
-  }, [activeChapter?.id, activeBlock?.id]);
+  }, [activeChapter?.id, activeBlock?.id, updateBodyDraft]);
 
   useEffect(() => {
     if (bodyInputFocused) return;
-    setBodyDraft(activeBlock?.content ?? '');
-  }, [activeBlock?.content, bodyInputFocused]);
+    updateBodyDraft(activeBlock?.content ?? '');
+  }, [activeBlock?.content, bodyInputFocused, updateBodyDraft]);
 
   const refreshSuggestionRevision = useCallback(async () => {
     if (!doc || !activeBlock) {
@@ -542,18 +552,20 @@ export function WritingScreen({ navigation, route }: Props) {
   };
 
   const switchChapter = async (chapterId: string) => {
-    if (chapterId === activeChapterId) return;
+    if (chapterId === activeChapterId) return true;
     if (doc && activeChapter && activeBlock) {
-      await persistBody(bodyDraft, {
+      const saved = await saveBody({
         documentId: doc.id,
         chapterId: activeChapter.id,
         blockId: activeBlock.id,
       });
+      if (!saved) return false;
     }
     setActiveChapterId(chapterId);
     void stopSpeaking();
     setSpeaking(false);
     setReadHint(null);
+    return true;
   };
 
   const handleAddChapter = async () => {
@@ -562,7 +574,7 @@ export function WritingScreen({ navigation, route }: Props) {
       appAlert('提示', zh.writing.chapterLimit);
       return;
     }
-    await saveBody();
+    if (!(await saveBody())) return;
     setAddingChapter(true);
     try {
       const res = await api.addChapter(doc.id);
@@ -588,7 +600,7 @@ export function WritingScreen({ navigation, route }: Props) {
       }
       rememberDocument(docData);
       setDoc(docData);
-      setBodyDraft('');
+      updateBodyDraft('');
       setSuggestionRevision(null);
     } catch (e) {
       appAlert('添加章节没成功', formatApiErrorAlertBody(e));
@@ -642,7 +654,7 @@ export function WritingScreen({ navigation, route }: Props) {
 
   const prepareSharePayload = async (): Promise<ChapterSharePayload | null> => {
     if (!doc || !activeChapter || sharing) return null;
-    await saveBody();
+    if (!(await saveBody())) return null;
     const payload = buildSharePayload();
     if (!payload) {
       appAlert('提示', zh.writing.shareEmpty);
@@ -687,36 +699,78 @@ export function WritingScreen({ navigation, route }: Props) {
     const blockId = target?.blockId ?? activeBlock?.id;
     if (!documentId || !chapterId || !blockId) return;
 
-    const saveTask = bodySaveChainRef.current
-      .then(async () => {
-        const fresh = await api.getDocument(documentId);
-        const chapter = fresh.data.chapters.find((c) => c.id === chapterId);
-        const block = chapter?.blocks.find((b) => b.id === blockId);
-        if (!chapter || !block) return;
-        if (content === block.content) return;
+    const saveTask = bodySaveQueueRef.current.enqueue(async () => {
+      const fresh = await api.getDocument(documentId);
+      const chapter = fresh.data.chapters.find((c) => c.id === chapterId);
+      const block = chapter?.blocks.find((b) => b.id === blockId);
+      if (!chapter || !block) throw new Error('DOCUMENT_SAVE_TARGET_NOT_FOUND');
+      if (content === block.content) {
+        await persistLocalStoreNow();
+        return;
+      }
 
-        const res = await api.saveDocumentContent(documentId, chapterId, blockId, content);
-        rememberDocument(res.data);
-        if (activeIdRef.current === documentId) {
-          setDoc(res.data);
-        }
-      })
-      .catch((e) => {
-        appAlert('保存没成功', formatApiErrorAlertBody(e));
-      });
+      const res = await api.saveDocumentContent(documentId, chapterId, blockId, content);
+      await persistLocalStoreNow();
+      rememberDocument(res.data);
+      if (activeIdRef.current === documentId) {
+        setDoc(res.data);
+      }
+    });
 
-    bodySaveChainRef.current = saveTask;
     setSaving(true);
     try {
       await saveTask;
+      return true;
+    } catch (e) {
+      appAlert('保存没成功', formatApiErrorAlertBody(e));
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  const saveBody = async () => {
-    await persistBody(bodyDraft);
+  const saveBody = async (
+    target?: { documentId: string; chapterId: string; blockId: string },
+  ) => {
+    while (true) {
+      const content = bodyDraftRef.current;
+      if (!(await persistBody(content, target))) return false;
+      if (bodyDraftRef.current === content) return true;
+    }
   };
+
+  useEffect(() => {
+    bodyDraftRef.current = bodyDraft;
+  }, [bodyDraft]);
+
+  useEffect(() => {
+    if (!bodyInputFocused || !doc || !activeChapter || !activeBlock) return;
+    if (bodyDraft === activeBlock.content) return;
+    const target = {
+      documentId: doc.id,
+      chapterId: activeChapter.id,
+      blockId: activeBlock.id,
+    };
+    const timer = setTimeout(() => {
+      void persistBody(bodyDraft, target);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [bodyDraft, bodyInputFocused, doc?.id, activeChapter?.id, activeBlock?.id]);
+
+  useEffect(() => {
+    if (!isFocused || !doc || !activeChapter || !activeBlock) return;
+    const target = {
+      documentId: doc.id,
+      chapterId: activeChapter.id,
+      blockId: activeBlock.id,
+    };
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') {
+        void persistBody(bodyDraftRef.current, target);
+      }
+    });
+    return () => subscription.remove();
+  }, [isFocused, doc?.id, activeChapter?.id, activeBlock?.id]);
 
   const renameArticleTitle = async () => {
     if (!doc) return;
@@ -780,25 +834,6 @@ export function WritingScreen({ navigation, route }: Props) {
     setOcrInsertWhereVisible(true);
   }, []);
 
-  const persistChapterContent = async (
-    documentId: string,
-    chapterId: string,
-    blockId: string,
-    nextContent: string,
-  ): Promise<Document | null> => {
-    try {
-      const res = await api.saveDocumentContent(
-        documentId,
-        chapterId,
-        blockId,
-        nextContent,
-      );
-      return res.data;
-    } catch {
-      return null;
-    }
-  };
-
   const beginOcrPlacement = (
     opts: { flexible: boolean; target?: OcrPlacementTarget | null },
     cursorAt: number,
@@ -816,7 +851,7 @@ export function WritingScreen({ navigation, route }: Props) {
     opts: { flexible: boolean; target?: OcrPlacementTarget | null },
     cursorAt?: number,
   ) => {
-    await saveBody();
+    if (!(await saveBody())) return;
     beginOcrPlacement(opts, cursorAt ?? bodyDraft.length);
   };
 
@@ -915,11 +950,11 @@ export function WritingScreen({ navigation, route }: Props) {
     const block = ch?.blocks[0];
     if (!ch || !block) return;
     setOcrChapterPickerVisible(false);
-    await switchChapter(chapterId);
+    if (!(await switchChapter(chapterId))) return;
     const fresh = await api.getDocument(doc.id);
     const freshCh = fresh.data.chapters.find((c) => c.id === chapterId);
     const content = freshCh?.blocks[0]?.content ?? '';
-    setBodyDraft(content);
+    updateBodyDraft(content);
     beginOcrPlacement(
       {
         flexible: false,
@@ -936,7 +971,10 @@ export function WritingScreen({ navigation, route }: Props) {
       return;
     }
     setOcrInsertHowVisible(false);
-    await saveBody();
+    if (!(await saveBody())) {
+      setOcrInsertHowVisible(true);
+      return;
+    }
     setAddingChapter(true);
     try {
       const res = await api.addChapter(doc.id);
@@ -975,7 +1013,10 @@ export function WritingScreen({ navigation, route }: Props) {
   const handleOcrCreateArticleForPlacement = async () => {
     if (creating) return;
     setOcrInsertHowVisible(false);
-    await saveBody();
+    if (!(await saveBody())) {
+      setOcrInsertHowVisible(true);
+      return;
+    }
     setCreating(true);
     try {
       const res = await api.createDocument('新文稿');
@@ -994,7 +1035,7 @@ export function WritingScreen({ navigation, route }: Props) {
       rememberDocument(docData);
       const first = [...docData.chapters].sort((a, b) => a.order - b.order)[0];
       setActiveChapterId(first?.id ?? null);
-      setBodyDraft(first?.blocks[0]?.content ?? '');
+      updateBodyDraft(first?.blocks[0]?.content ?? '');
       void stopSpeaking();
       setSpeaking(false);
       beginOcrPlacement({ flexible: true }, first?.blocks[0]?.content.length ?? 0);
@@ -1040,17 +1081,8 @@ export function WritingScreen({ navigation, route }: Props) {
 
     try {
       const nextContent = insertTextAtOffset(bodyDraft, offset, text);
-      setBodyDraft(nextContent);
-      const updated = await persistChapterContent(
-        target.documentId,
-        target.chapterId,
-        target.blockId,
-        nextContent,
-      );
-      if (updated) {
-        rememberDocument(updated);
-        setDoc(updated);
-      }
+      updateBodyDraft(nextContent);
+      if (!(await persistBody(nextContent, target))) return;
       finishOcrInsert(zh.writing.ocrInsertDone);
     } catch (e) {
       appAlert('插入没成功', formatApiErrorAlertBody(e));
@@ -1352,7 +1384,7 @@ export function WritingScreen({ navigation, route }: Props) {
                 placeholder={zh.writing.bodyPlaceholder}
                 placeholderTextColor={colors.textMuted}
                 value={bodyDraft}
-                onChangeText={setBodyDraft}
+                onChangeText={updateBodyDraft}
                 onSelectionChange={(e) => {
                   setSelection(e.nativeEvent.selection);
                 }}

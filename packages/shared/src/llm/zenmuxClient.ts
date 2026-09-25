@@ -39,6 +39,11 @@ export type ZenMuxWebSearchOptions = {
   timezone?: string;
 };
 
+export type ZenMuxCompletionMeta = {
+  status: number;
+  finishReason?: string;
+};
+
 type ZenMuxChatOptions = {
   maxTokens?: number;
   temperature?: number;
@@ -50,8 +55,12 @@ type ZenMuxChatOptions = {
    * 拿到 HTTP 响应后回调，用于诊断日志记录状态码。
    * 仅成功路径需要（失败已由 ZenMuxError.status 携带）。
    */
-  onMeta?: (meta: { status: number }) => void;
+  onMeta?: (meta: ZenMuxCompletionMeta) => void;
 };
+
+function normalizeFinishReason(reason?: string): string | undefined {
+  return reason === 'max_tokens' ? 'length' : reason;
+}
 
 function buildWebSearchBody(webSearch?: ZenMuxWebSearchOptions): Record<string, unknown> | undefined {
   if (!webSearch?.enabled) return undefined;
@@ -227,6 +236,7 @@ async function callAnthropicMessagesWithWebSearch(
 
   const json = (await res.json()) as {
     content?: AnthropicContentBlock[];
+    stop_reason?: string;
     error?: { message?: string; type?: string };
   };
 
@@ -237,7 +247,10 @@ async function callAnthropicMessagesWithWebSearch(
     throw new ZenMuxError(msg, res.status);
   }
 
-  options.onMeta?.({ status: res.status });
+  options.onMeta?.({
+    status: res.status,
+    finishReason: normalizeFinishReason(json.stop_reason),
+  });
   return parseAnthropicResponse(json, options.appendCitations);
 }
 
@@ -301,6 +314,7 @@ async function zenmuxChat(
   const json = (await res.json()) as {
     choices?: Array<{
       message?: { content?: string; annotations?: UrlCitationAnnotation[] };
+      finish_reason?: string;
     }>;
     error?: { message?: string };
   };
@@ -310,8 +324,12 @@ async function zenmuxChat(
     throw new ZenMuxError(msg, res.status);
   }
 
-  options?.onMeta?.({ status: res.status });
-  const message = json.choices?.[0]?.message;
+  const choice = json.choices?.[0];
+  options?.onMeta?.({
+    status: res.status,
+    finishReason: normalizeFinishReason(choice?.finish_reason),
+  });
+  const message = choice?.message;
   const raw = message?.content?.trim();
   if (!raw) throw new ZenMuxError('ZenMux 没有返回内容');
   return finalizeChatReply(raw, options, message?.annotations);
@@ -392,7 +410,7 @@ export async function zenmuxCompleteMessages(params: {
   temperature?: number;
   model?: string;
   webSearch?: ZenMuxWebSearchOptions;
-  onMeta?: (meta: { status: number }) => void;
+  onMeta?: (meta: ZenMuxCompletionMeta) => void;
 }): Promise<string> {
   return zenmuxChat(params.apiKey, params.messages, {
     maxTokens: params.maxTokens,

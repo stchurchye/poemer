@@ -11,6 +11,7 @@ export type ModelCompletionInput = {
 
 export type ModelCompletionResult = {
   text: string;
+  finishReason?: string;
 };
 
 export interface ModelClient {

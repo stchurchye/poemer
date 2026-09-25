@@ -18,7 +18,7 @@ import {
   type PreparedChatContext,
   type PreparedWritingIntentContext,
 } from '@shiren/engine';
-import { chatCompletionRaw } from './deepseek.js';
+import { chatCompletionResultRaw } from './deepseek.js';
 import {
   getChatMessages,
   getChatSession,
@@ -42,11 +42,10 @@ const storeAdapter: ContextStoreAdapter = {
 function modelFromApiKey(apiKey: string): ModelClient {
   return {
     async complete(input) {
-      const text = await chatCompletionRaw(apiKey, input.messages as ChatMessageInput[], {
+      return chatCompletionResultRaw(apiKey, input.messages as ChatMessageInput[], {
         maxTokens: input.maxTokens,
         temperature: input.temperature,
       });
-      return { text };
     },
   };
 }
@@ -67,6 +66,7 @@ export async function prepareChatContext(params: {
     contextSelection: params.contextSelection,
     // 组装窗口按真实回复模型（gpt-5.4，272k）取
     modelId: ZENMUX_MODEL_CHAT,
+    compactModelId: DEEPSEEK_MODEL_PRO,
   });
 }
 
@@ -106,6 +106,7 @@ export async function compactChatSession(params: {
     model: modelFromApiKey(params.apiKey),
     sessionId: params.sessionId,
     dialect: params.dialect,
+    compactModelId: DEEPSEEK_MODEL_PRO,
   });
 }
 
@@ -121,6 +122,7 @@ export async function prepareWritingIntentContext(
     model: modelFromApiKey(apiKey),
     ...rest,
     modelId: DEEPSEEK_MODEL_PRO,
+    compactModelId: DEEPSEEK_MODEL_PRO,
   });
 }
 
@@ -136,6 +138,7 @@ export async function prepareWritingChatContext(
     model: modelFromApiKey(apiKey),
     ...rest,
     modelId: DEEPSEEK_MODEL_PRO,
+    compactModelId: DEEPSEEK_MODEL_PRO,
   });
 }
 

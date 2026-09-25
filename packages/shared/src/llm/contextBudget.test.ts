@@ -146,3 +146,89 @@ test('assembleWritingExecuteContext: 正文超长时 pinned 指令 100% 保留',
   assert.ok(r.userContent.includes(instruction), '用户指令必须完整送达');
   assert.ok(estimateTokens(r.userContent) <= 3000);
 });
+
+test('assembleWritingExecuteContext: pinned 内容自身超过窗口时明确拒绝', () => {
+  assert.throws(
+    () =>
+      assembleWritingExecuteContext({
+        systemPrompt: 'system',
+        pinnedParts: [`用户补充：${'必须完整保留'.repeat(2000)}`],
+        trimmableParts: ['正文'],
+        limitTokens: 1000,
+        outputReserve: 100,
+      }),
+    /CONTEXT_PINNED_TOO_LARGE/,
+  );
+});
+
+test('assembleChatContext: pendingUser 自身超过窗口时明确拒绝', () => {
+  assert.throws(
+    () =>
+      assembleChatContext({
+        systemPrompt: 'system',
+        history: [],
+        pendingUser: '待发送'.repeat(2000),
+        limitTokens: 1000,
+        outputReserve: 100,
+      }),
+    /CONTEXT_FIXED_TOO_LARGE/,
+  );
+});
+
+test('assembleChatContext: 小窗口覆盖值会同步收敛默认输出预留', () => {
+  const result = assembleChatContext({
+    systemPrompt: 'system',
+    history: [],
+    pendingUser: '继续',
+    limitTokens: 3000,
+  });
+
+  assert.ok(result.usage.breakdown.outputReserve <= 750);
+  assert.ok(result.usage.usedTokens <= result.usage.limitTokens);
+});
+
+test('assembleChatContext: 显式 outputReserve 不会被静默改写', () => {
+  const result = assembleChatContext({
+    systemPrompt: 'system',
+    history: [],
+    pendingUser: '继续',
+    limitTokens: 3000,
+    outputReserve: 1000,
+  });
+
+  assert.equal(result.usage.breakdown.outputReserve, 1000);
+});
+
+test('assembleWritingIntentContext: 超长当前章节会裁到窗口内', () => {
+  const result = assembleWritingIntentContext({
+    systemPrompt: 'system',
+    history: [],
+    chapterBlock: '当前章节'.repeat(3000),
+    documentBlock: '全篇节选'.repeat(3000),
+    userMessage: '帮我看看',
+    limitTokens: 1000,
+    outputReserve: 100,
+  });
+
+  assert.ok(result.usage.usedTokens <= result.usage.limitTokens);
+  assert.ok(
+    result.messages.reduce((sum, message) => sum + estimateTokens(message.content), 0) + 100 <=
+      1000,
+  );
+});
+
+test('assembleWritingIntentContext: 用户指令自身超过窗口时明确拒绝', () => {
+  assert.throws(
+    () =>
+      assembleWritingIntentContext({
+        systemPrompt: 'system',
+        history: [],
+        chapterBlock: '正文',
+        documentBlock: '',
+        userMessage: '必须完整保留'.repeat(2000),
+        limitTokens: 1000,
+        outputReserve: 100,
+      }),
+    /CONTEXT_FIXED_TOO_LARGE/,
+  );
+});

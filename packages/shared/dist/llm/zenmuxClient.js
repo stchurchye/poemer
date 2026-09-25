@@ -7,6 +7,9 @@ export class ZenMuxError extends Error {
         this.name = 'ZenMuxError';
     }
 }
+function normalizeFinishReason(reason) {
+    return reason === 'max_tokens' ? 'length' : reason;
+}
 function buildWebSearchBody(webSearch) {
     if (!webSearch?.enabled)
         return undefined;
@@ -158,7 +161,10 @@ async function callAnthropicMessagesWithWebSearch(apiKey, messages, options) {
             `ZenMux Anthropic 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
-    options.onMeta?.({ status: res.status });
+    options.onMeta?.({
+        status: res.status,
+        finishReason: normalizeFinishReason(json.stop_reason),
+    });
     return parseAnthropicResponse(json, options.appendCitations);
 }
 function isPlainTextMessages(messages) {
@@ -202,8 +208,12 @@ async function zenmuxChat(apiKey, messages, options) {
         const msg = json.error?.message ?? `ZenMux 请求失败（${res.status}）`;
         throw new ZenMuxError(msg, res.status);
     }
-    options?.onMeta?.({ status: res.status });
-    const message = json.choices?.[0]?.message;
+    const choice = json.choices?.[0];
+    options?.onMeta?.({
+        status: res.status,
+        finishReason: normalizeFinishReason(choice?.finish_reason),
+    });
+    const message = choice?.message;
     const raw = message?.content?.trim();
     if (!raw)
         throw new ZenMuxError('ZenMux 没有返回内容');

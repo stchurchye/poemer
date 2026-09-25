@@ -363,17 +363,20 @@ documentsRouter.get('/:id/assistant/context-usage', async (c) => {
     pending: c.req.query('pending') ?? '',
   });
 
-  const usage = await previewWritingIntentContextUsage({
-    document: doc,
-    allMessages: getWritingAssistantMessages(documentId),
-    chapterBlock,
-    documentBlock,
-    pendingUser,
-    dialect,
-    contextSelection,
-  });
-
-  return c.json({ ok: true, data: usage, requestId: c.get('requestId') });
+  try {
+    const usage = await previewWritingIntentContextUsage({
+      document: doc,
+      allMessages: getWritingAssistantMessages(documentId),
+      chapterBlock,
+      documentBlock,
+      pendingUser,
+      dialect,
+      contextSelection,
+    });
+    return c.json({ ok: true, data: usage, requestId: c.get('requestId') });
+  } catch (e) {
+    return handleAiError(c, e);
+  }
 });
 
 documentsRouter.post('/:id/assistant/context-usage', async (c) => {
@@ -386,17 +389,20 @@ documentsRouter.post('/:id/assistant/context-usage', async (c) => {
   const contextSelection = parseContextSelectionFromBody(body);
   const { chapterBlock, documentBlock, pendingUser } = writingAssistantContextFields(body);
 
-  const usage = await previewWritingIntentContextUsage({
-    document: doc,
-    allMessages: getWritingAssistantMessages(documentId),
-    chapterBlock,
-    documentBlock,
-    pendingUser,
-    dialect,
-    contextSelection,
-  });
-
-  return c.json({ ok: true, data: usage, requestId: c.get('requestId') });
+  try {
+    const usage = await previewWritingIntentContextUsage({
+      document: doc,
+      allMessages: getWritingAssistantMessages(documentId),
+      chapterBlock,
+      documentBlock,
+      pendingUser,
+      dialect,
+      contextSelection,
+    });
+    return c.json({ ok: true, data: usage, requestId: c.get('requestId') });
+  } catch (e) {
+    return handleAiError(c, e);
+  }
 });
 
 documentsRouter.get('/:id/assistant/context-preview', async (c) => {
@@ -413,17 +419,20 @@ documentsRouter.get('/:id/assistant/context-preview', async (c) => {
     pending: c.req.query('pending') ?? '',
   });
 
-  const data = await previewWritingIntentContextPreview({
-    document: doc,
-    allMessages: getWritingAssistantMessages(documentId),
-    chapterBlock,
-    documentBlock,
-    pendingUser,
-    dialect,
-    contextSelection,
-  });
-
-  return c.json({ ok: true, data, requestId: c.get('requestId') });
+  try {
+    const data = await previewWritingIntentContextPreview({
+      document: doc,
+      allMessages: getWritingAssistantMessages(documentId),
+      chapterBlock,
+      documentBlock,
+      pendingUser,
+      dialect,
+      contextSelection,
+    });
+    return c.json({ ok: true, data, requestId: c.get('requestId') });
+  } catch (e) {
+    return handleAiError(c, e);
+  }
 });
 
 documentsRouter.post('/:id/assistant/context-preview', async (c) => {
@@ -436,17 +445,20 @@ documentsRouter.post('/:id/assistant/context-preview', async (c) => {
   const contextSelection = parseContextSelectionFromBody(body);
   const { chapterBlock, documentBlock, pendingUser } = writingAssistantContextFields(body);
 
-  const data = await previewWritingIntentContextPreview({
-    document: doc,
-    allMessages: getWritingAssistantMessages(documentId),
-    chapterBlock,
-    documentBlock,
-    pendingUser,
-    dialect,
-    contextSelection,
-  });
-
-  return c.json({ ok: true, data, requestId: c.get('requestId') });
+  try {
+    const data = await previewWritingIntentContextPreview({
+      document: doc,
+      allMessages: getWritingAssistantMessages(documentId),
+      chapterBlock,
+      documentBlock,
+      pendingUser,
+      dialect,
+      contextSelection,
+    });
+    return c.json({ ok: true, data, requestId: c.get('requestId') });
+  } catch (e) {
+    return handleAiError(c, e);
+  }
 });
 
 documentsRouter.post('/:id/assistant/intent', async (c) => {
@@ -835,43 +847,59 @@ documentsRouter.post('/:id/assistant/confirm', async (c) => {
     return handleAiError(c, e);
   }
 
-  updateWritingAssistantMessage(documentId, body.messageId, { confirmStatus: 'approved' });
-
   const action = pending.pendingAction || '润色';
   const instruction = pending.pendingInstruction || '';
   const oldText = found.block.content;
   const understandingScope: WritingUnderstandingScope =
     body.understandingScope === 'chapter' ? 'chapter' : 'document';
 
-  const { messages: execMessages, usage: contextUsage } = prepareWritingExecuteContext({
-    action,
-    oldText,
-    instruction,
-    styleGuide: doc.styleGuide,
-    dialect,
-    chapterTitle: body.chapterTitle?.trim() || found.chapter.title,
-    understandingScope,
-    documentExcerpt: body.documentExcerpt?.trim(),
-    documentContextSummary: doc.documentContextSummary,
-    modelId: DEEPSEEK_MODEL_PRO,
-  });
+  let preparedExecute: ReturnType<typeof prepareWritingExecuteContext>;
+  try {
+    preparedExecute = prepareWritingExecuteContext({
+      action,
+      oldText,
+      instruction,
+      styleGuide: doc.styleGuide,
+      dialect,
+      chapterTitle: body.chapterTitle?.trim() || found.chapter.title,
+      understandingScope,
+      documentExcerpt: body.documentExcerpt?.trim(),
+      documentContextSummary: doc.documentContextSummary,
+      modelId: DEEPSEEK_MODEL_PRO,
+    });
+  } catch (e) {
+    return handleAiError(c, e);
+  }
+  const { messages: execMessages, usage: contextUsage } = preparedExecute;
 
   let suggested: string;
   let comment: string;
   let executeBasis: WritingExecuteBasis;
   try {
-    const parsed = await completeWritingExecuteRaw(apiKey, execMessages, {
-      action,
-      oldText,
-      suggestedText: oldText,
-      instruction,
-      dialect,
-    });
+    const parsed = await completeWritingExecuteRaw(
+      apiKey,
+      execMessages,
+      {
+        action,
+        oldText,
+        suggestedText: oldText,
+        instruction,
+        dialect,
+      },
+      {
+        maxTokens: contextUsage.breakdown.outputReserve,
+        inputLimitTokens: contextUsage.limitTokens,
+      },
+    );
     executeBasis = ensureWritingExecuteBasis(parsed.basis, action);
     const isContinue = action === '续写';
     suggested = isContinue ? oldText + parsed.text : parsed.text;
     comment = writingDoneComment(action, dialect);
+    updateWritingAssistantMessage(documentId, body.messageId, {
+      confirmStatus: 'approved',
+    });
   } catch (e) {
+    updateWritingAssistantMessage(documentId, body.messageId, { confirmStatus: 'pending' });
     return handleAiError(c, e);
   }
 

@@ -138,7 +138,7 @@ interface Props {
   onViewRevision?: (revisionId: string, hint?: Revision) => void | Promise<void>;
   /** 浮层打开时滚到最新消息 */
   scrollToLatestOnOpen?: boolean;
-  onBeforeExecute?: () => Promise<void>;
+  onBeforeExecute?: () => Promise<boolean | void>;
   onRevisionReady: (result: AiRevisionResult) => void;
   /** 嵌入右侧弹窗时隐藏顶部标题（由弹窗头部展示） */
   showTitle?: boolean;
@@ -883,30 +883,32 @@ export function WritingAssistantPanel({
     approved: boolean,
     scope: WritingUnderstandingScope = understandingScope,
   ) => {
-    if (inFlight || disabled || !approved) return;
-
-    const intentMessage = messages.find((m) => m.id === messageId);
-    const pendingId = `local-pending-${Date.now()}`;
-    const beforeIds = new Set(messages.map((m) => m.id));
-
-    const waitingLine = await getAssistantContinueLine();
-    setMessages((prev) => [
-      ...prev.map((m) =>
-        m.id === messageId ? { ...m, confirmStatus: 'approved' as const } : m,
-      ),
-      localMessage(documentId, 'assistant', '', 'notice', {
-        id: pendingId,
-        status: 'pending',
-        displayContent: waitingLine,
-        retryConfirm: { messageId, approved, understandingScope: scope },
-      }),
-    ]);
-    scrollToEnd();
-    void announceAssistantWaiting(waitingLine);
+    if (inFlightRef.current || disabled || !approved) return;
+    inFlightRef.current = true;
     setInFlight(true);
+    const pendingId = `local-pending-${Date.now()}`;
 
     try {
-      await onBeforeExecute?.();
+      const canExecute = await onBeforeExecute?.();
+      if (canExecute === false) return;
+
+      const intentMessage = messages.find((m) => m.id === messageId);
+      const beforeIds = new Set(messages.map((m) => m.id));
+      const waitingLine = await getAssistantContinueLine();
+      setMessages((prev) => [
+        ...prev.map((m) =>
+          m.id === messageId ? { ...m, confirmStatus: 'approved' as const } : m,
+        ),
+        localMessage(documentId, 'assistant', '', 'notice', {
+          id: pendingId,
+          status: 'pending',
+          displayContent: waitingLine,
+          retryConfirm: { messageId, approved, understandingScope: scope },
+        }),
+      ]);
+      scrollToEnd();
+      void announceAssistantWaiting(waitingLine);
+
       const res = await api.confirmWritingAssistant(documentId, {
         messageId,
         approved,
@@ -927,7 +929,6 @@ export function WritingAssistantPanel({
         });
       }
 
-      inFlightRef.current = false;
       await cancelAssistantFeedback();
 
       const fresh = await api.getWritingAssistantMessages(documentId);
@@ -1034,6 +1035,7 @@ export function WritingAssistantPanel({
       );
       scrollToEnd();
     } finally {
+      inFlightRef.current = false;
       setInFlight(false);
     }
   };

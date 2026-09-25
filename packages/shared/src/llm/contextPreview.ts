@@ -38,6 +38,12 @@ export type ContextPreview = {
   messages: ContextChatMessage[];
 };
 
+type AvailableHistoryMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 export type ContextSelection = {
   excludedBlockIds?: string[];
   excludedMessageIds?: string[];
@@ -139,6 +145,8 @@ export function blocksFromAssembleChatResult(
   opts?: {
     historyMessageIds?: string[];
     excludedMessageIds?: string[];
+    /** 选择前的候选历史；用于让被排除的消息继续显示为未勾选块 */
+    availableHistory?: AvailableHistoryMessage[];
     /** 已存在但被本轮选择排除的摘要：仍显示为未勾选块，方便用户重新选回 */
     availableSummary?: string | null;
   },
@@ -177,45 +185,69 @@ export function blocksFromAssembleChatResult(
     });
   }
 
-  // 修 C-Preview：fitted 历史是 historyMessageIds 的尾部；按偏移对齐，而非从 0 顺序取
+  // 有候选全集时直接按原顺序渲染。实际入模集合仍以 historyMessageIds + fitted 数量为准。
   const fittedHistoryCount = countFittedHistory(assembled.messages);
-  const idOffset = Math.max(0, (opts?.historyMessageIds?.length ?? 0) - fittedHistoryCount);
-  let historyIdx = 0;
-  for (const msg of assembled.messages) {
-    if (msg.role === 'system') continue;
-    if (msg.role === 'user' && msg.content.startsWith(SUMMARY_PREFIX)) continue;
-    if (msg === assembled.messages[assembled.messages.length - 1]) continue;
-
-    const messageId = opts?.historyMessageIds?.[idOffset + historyIdx];
-    const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
-    blocks.push({
-      id: messageId ? `history-${messageId}` : blockId('history', idx),
-      kind,
-      label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
-      content: msg.content,
-      tokens: estimateTokens(msg.content),
-      selectable: true,
-      selectedByDefault: useExclusion && messageId ? !excludedMsg.has(messageId) : true,
-      messageId,
-      role: msg.role,
+  if (opts?.availableHistory) {
+    const selectedIds = opts.historyMessageIds ?? [];
+    const fittedIds = new Set(selectedIds.slice(-fittedHistoryCount));
+    const selectedSet = new Set(selectedIds);
+    opts.availableHistory.forEach((msg, historyIdx) => {
+      const selected = selectedSet.has(msg.id) && !excludedMsg.has(msg.id);
+      const omittedByBudget = selected && !fittedIds.has(msg.id);
+      blocks.push({
+        id: `history-${msg.id}`,
+        kind: msg.role === 'assistant' ? 'history_assistant' : 'history_user',
+        label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
+        content: msg.content,
+        tokens: estimateTokens(msg.content),
+        selectable: true,
+        selectedByDefault: selected && !omittedByBudget,
+        messageId: msg.id,
+        role: msg.role,
+        omittedByBudget,
+      });
+      idx += 1;
     });
-    idx += 1;
-    historyIdx += 1;
-  }
+  } else {
+    // 兼容未提供候选全集的调用方：fitted 历史按 historyMessageIds 尾部对齐。
+    const idOffset = Math.max(0, (opts?.historyMessageIds?.length ?? 0) - fittedHistoryCount);
+    let historyIdx = 0;
+    for (const msg of assembled.messages) {
+      if (msg.role === 'system') continue;
+      if (msg.role === 'user' && msg.content.startsWith(SUMMARY_PREFIX)) continue;
+      if (msg === assembled.messages[assembled.messages.length - 1]) continue;
 
-  for (const turn of assembled.messagesToCompact) {
-    const kind = turn.role === 'assistant' ? 'history_assistant' : 'history_user';
-    blocks.push({
-      id: blockId('omitted', idx++),
-      kind,
-      label: turn.role === 'assistant' ? '小助手（已裁切）' : '用户（已裁切）',
-      content: turn.content,
-      tokens: estimateTokens(turn.content),
-      selectable: true,
-      selectedByDefault: false,
-      omittedByBudget: true,
-      role: turn.role,
-    });
+      const messageId = opts?.historyMessageIds?.[idOffset + historyIdx];
+      const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
+      blocks.push({
+        id: messageId ? `history-${messageId}` : blockId('history', idx),
+        kind,
+        label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
+        content: msg.content,
+        tokens: estimateTokens(msg.content),
+        selectable: true,
+        selectedByDefault: useExclusion && messageId ? !excludedMsg.has(messageId) : true,
+        messageId,
+        role: msg.role,
+      });
+      idx += 1;
+      historyIdx += 1;
+    }
+
+    for (const turn of assembled.messagesToCompact) {
+      const kind = turn.role === 'assistant' ? 'history_assistant' : 'history_user';
+      blocks.push({
+        id: blockId('omitted', idx++),
+        kind,
+        label: turn.role === 'assistant' ? '小助手（已裁切）' : '用户（已裁切）',
+        content: turn.content,
+        tokens: estimateTokens(turn.content),
+        selectable: true,
+        selectedByDefault: false,
+        omittedByBudget: true,
+        role: turn.role,
+      });
+    }
   }
 
   return {
@@ -264,6 +296,8 @@ export function blocksFromWritingIntent(
     historyMessageIds?: string[];
     excludedMessageIds?: string[];
     excludedBlockIds?: string[];
+    /** 选择前的候选历史；用于让被排除的消息继续显示为未勾选块 */
+    availableHistory?: AvailableHistoryMessage[];
     /** 已存在但被本轮选择排除的摘要：仍显示为未勾选块，方便用户重新选回 */
     availableSummary?: string | null;
   },
@@ -333,43 +367,66 @@ export function blocksFromWritingIntent(
   }
 
   const fittedHistoryCount = countFittedHistory(assembled.messages);
-  const idOffset = Math.max(0, (opts.historyMessageIds?.length ?? 0) - fittedHistoryCount);
-  let historyIdx = 0;
-  for (const msg of assembled.messages) {
-    if (msg.role === 'system') continue;
-    if (msg.role === 'user' && msg.content.startsWith(SUMMARY_PREFIX)) continue;
-    if (msg === assembled.messages[assembled.messages.length - 1]) continue;
-
-    const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
-    const messageId = opts.historyMessageIds?.[idOffset + historyIdx];
-    blocks.push({
-      id: messageId ? `whist-${messageId}` : blockId('whist', idx),
-      kind,
-      label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
-      content: msg.content,
-      tokens: estimateTokens(msg.content),
-      selectable: true,
-      selectedByDefault: useMsgExclusion && messageId ? !excludedMsg.has(messageId) : true,
-      messageId,
-      role: msg.role,
+  if (opts.availableHistory) {
+    const selectedIds = opts.historyMessageIds ?? [];
+    const fittedIds = new Set(selectedIds.slice(-fittedHistoryCount));
+    const selectedSet = new Set(selectedIds);
+    opts.availableHistory.forEach((msg, historyIdx) => {
+      const selected = selectedSet.has(msg.id) && !excludedMsg.has(msg.id);
+      const omittedByBudget = selected && !fittedIds.has(msg.id);
+      blocks.push({
+        id: `whist-${msg.id}`,
+        kind: msg.role === 'assistant' ? 'history_assistant' : 'history_user',
+        label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
+        content: msg.content,
+        tokens: estimateTokens(msg.content),
+        selectable: true,
+        selectedByDefault: selected && !omittedByBudget,
+        messageId: msg.id,
+        role: msg.role,
+        omittedByBudget,
+      });
+      idx += 1;
     });
-    idx += 1;
-    historyIdx += 1;
-  }
+  } else {
+    const idOffset = Math.max(0, (opts.historyMessageIds?.length ?? 0) - fittedHistoryCount);
+    let historyIdx = 0;
+    for (const msg of assembled.messages) {
+      if (msg.role === 'system') continue;
+      if (msg.role === 'user' && msg.content.startsWith(SUMMARY_PREFIX)) continue;
+      if (msg === assembled.messages[assembled.messages.length - 1]) continue;
 
-  for (const turn of assembled.messagesToCompact) {
-    const kind = turn.role === 'assistant' ? 'history_assistant' : 'history_user';
-    blocks.push({
-      id: blockId('womit', idx++),
-      kind,
-      label: turn.role === 'assistant' ? '小助手（已裁切）' : '用户（已裁切）',
-      content: turn.content,
-      tokens: estimateTokens(turn.content),
-      selectable: true,
-      selectedByDefault: false,
-      omittedByBudget: true,
-      role: turn.role,
-    });
+      const kind = msg.role === 'assistant' ? 'history_assistant' : 'history_user';
+      const messageId = opts.historyMessageIds?.[idOffset + historyIdx];
+      blocks.push({
+        id: messageId ? `whist-${messageId}` : blockId('whist', idx),
+        kind,
+        label: msg.role === 'assistant' ? `小助手 #${historyIdx + 1}` : `用户 #${historyIdx + 1}`,
+        content: msg.content,
+        tokens: estimateTokens(msg.content),
+        selectable: true,
+        selectedByDefault: useMsgExclusion && messageId ? !excludedMsg.has(messageId) : true,
+        messageId,
+        role: msg.role,
+      });
+      idx += 1;
+      historyIdx += 1;
+    }
+
+    for (const turn of assembled.messagesToCompact) {
+      const kind = turn.role === 'assistant' ? 'history_assistant' : 'history_user';
+      blocks.push({
+        id: blockId('womit', idx++),
+        kind,
+        label: turn.role === 'assistant' ? '小助手（已裁切）' : '用户（已裁切）',
+        content: turn.content,
+        tokens: estimateTokens(turn.content),
+        selectable: true,
+        selectedByDefault: false,
+        omittedByBudget: true,
+        role: turn.role,
+      });
+    }
   }
 
   return {

@@ -18,7 +18,7 @@
 3. **改稿必须可追溯**：`Revision` + diff 预览 + 接受/拒绝 + 历史回滚。
 4. **发送前先意图确认**（问问题、写作小助手），用户点「确定」才真正改稿（写作走 `confirm`）。
 5. **产品操作类问题**走 `mode=guide`（`assistantGuideRegistry.ts`），用 App 内弹窗引导。
-6. **上下文环 / 真压缩**：完整实现在 `apps/api` 的 `contextPipeline`；本地版 UI 隐藏，见 [local-first-data.md](./local-first-data.md#上下文编排-roadmap)。
+6. **上下文环 / 真压缩**：共享实现在 `packages/engine/src/contextPipeline.ts`，手机本地版与 legacy API 都调用它；两端 UI 均可预览、筛选和压缩上下文。
 
 ## 2. Monorepo 结构
 
@@ -96,9 +96,9 @@ docker-compose.yml    仅 legacy API
 
 | 模块 | 路径 |
 |------|------|
-| Token 预算 / 小助手记忆 | `packages/shared/src/llm/contextBudget.ts`（默认 300k 窗口，8k 输出预留，摘要上限 100k；UI 展示「压缩后的历史」+「对话内容」，待发送不计入占比） |
-| 组装管道 | `apps/api/src/lib/contextPipeline.ts` |
-| 自动压缩 | `apps/api/src/lib/contextCompact.ts` |
+| Token 预算 / 小助手记忆 | `packages/shared/src/llm/contextBudget.ts`（按模型 profile 取窗口，未知模型保守 272k；8k 输出预留，摘要上限 4k token） |
+| 组装管道 | `packages/engine/src/contextPipeline.ts`（mobile / API 共用） |
+| 自动压缩 | `packages/engine/src/contextCompact.ts`（超长输入按模型窗口分块） |
 | 写作上下文过滤 | `packages/shared/src/writingAssistantContext.ts` → `filterWritingMessagesForContext`（取消的确认轮次不进模型） |
 
 问问题与写作小助手 **各自** `prepare*Context` / `preview*ContextUsage`，改一处要检查是否需对称修改。
@@ -198,7 +198,7 @@ npm run android                        # 或连接真机后 expo run:android --d
 
 ## 13. 明确未做 / 不要做
 
-- 无自动化测试（改核心逻辑建议手测或补测）
+- 核心 shared / engine 已有 Node 自动化测试；改动后运行 `npm run test -w @shiren/shared`、`npm run test -w @shiren/engine` 和根目录 `npm run typecheck`。
 - 无多用户鉴权、无独立「手机同步协议」（API = 唯一数据源）
 - 无飞书导出（README 待接）
 - 不要未经用户要求 git commit / force push
